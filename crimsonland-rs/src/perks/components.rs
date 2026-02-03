@@ -174,44 +174,29 @@ pub struct PerkBonuses {
 impl PerkBonuses {
     /// Recalculate bonuses from perk inventory
     pub fn calculate(inventory: &PerkInventory) -> Self {
-        let mut bonuses = Self::default();
-
-        // Health & Defense
-        bonuses.regen_per_second = inventory.get_count(PerkId::Regeneration) as f32 * 2.0;
-        bonuses.damage_reduction = (inventory.get_count(PerkId::ThickSkin) as f32 * 0.1).min(0.5);
-        bonuses.max_health_bonus = inventory.get_count(PerkId::VitalityBoost) as f32 * 25.0;
-
-        // Movement
-        bonuses.speed_multiplier =
-            1.0 + (inventory.get_count(PerkId::SpeedBoost) as f32 * 0.15);
-        bonuses.dodge_chance = (inventory.get_count(PerkId::Dodger) as f32 * 0.1).min(0.5);
-
-        // Combat
-        bonuses.accuracy_bonus = inventory.get_count(PerkId::DeadlyAccuracy) as f32 * 0.2;
-        bonuses.crit_chance = (inventory.get_count(PerkId::CriticalHit) as f32 * 0.1).min(0.5);
-        bonuses.crit_multiplier = 2.0; // Base crit damage
-        bonuses.reload_speed_multiplier =
-            1.0 + (inventory.get_count(PerkId::FastReload) as f32 * 0.25);
-        bonuses.ammo_multiplier =
-            1.0 + (inventory.get_count(PerkId::LargerClips) as f32 * 0.25);
-
-        // Fire rate
-        bonuses.fire_rate_multiplier =
-            1.0 + (inventory.get_count(PerkId::TriggerHappy) as f32 * 0.15);
-
-        // Damage
-        bonuses.damage_multiplier =
-            1.0 + (inventory.get_count(PerkId::HollowPoints) as f32 * 0.1);
-
-        // Experience
-        bonuses.exp_multiplier =
-            1.0 + (inventory.get_count(PerkId::FastLearner) as f32 * 0.25);
-
-        // Range
-        bonuses.range_multiplier =
-            1.0 + (inventory.get_count(PerkId::LongBarrel) as f32 * 0.2);
-
-        bonuses
+        Self {
+            // Health & Defense
+            regen_per_second: inventory.get_count(PerkId::Regeneration) as f32 * 2.0,
+            damage_reduction: (inventory.get_count(PerkId::ThickSkin) as f32 * 0.1).min(0.5),
+            max_health_bonus: inventory.get_count(PerkId::VitalityBoost) as f32 * 25.0,
+            // Movement
+            speed_multiplier: 1.0 + (inventory.get_count(PerkId::SpeedBoost) as f32 * 0.15),
+            dodge_chance: (inventory.get_count(PerkId::Dodger) as f32 * 0.1).min(0.5),
+            // Combat
+            accuracy_bonus: inventory.get_count(PerkId::DeadlyAccuracy) as f32 * 0.2,
+            crit_chance: (inventory.get_count(PerkId::CriticalHit) as f32 * 0.1).min(0.5),
+            crit_multiplier: 2.0, // Base crit damage
+            reload_speed_multiplier: 1.0 + (inventory.get_count(PerkId::FastReload) as f32 * 0.25),
+            ammo_multiplier: 1.0 + (inventory.get_count(PerkId::LargerClips) as f32 * 0.25),
+            // Fire rate
+            fire_rate_multiplier: 1.0 + (inventory.get_count(PerkId::TriggerHappy) as f32 * 0.15),
+            // Damage
+            damage_multiplier: 1.0 + (inventory.get_count(PerkId::HollowPoints) as f32 * 0.1),
+            // Experience
+            exp_multiplier: 1.0 + (inventory.get_count(PerkId::FastLearner) as f32 * 0.25),
+            // Range
+            range_multiplier: 1.0 + (inventory.get_count(PerkId::LongBarrel) as f32 * 0.2),
+        }
     }
 }
 

@@ -4,9 +4,10 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Weapon types available in the game
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum WeaponId {
     // Pistols
+    #[default]
     Pistol,
     PocketRocket,
     Magnum,
@@ -49,11 +50,6 @@ pub enum WeaponId {
     InfernoCannon,
 }
 
-impl Default for WeaponId {
-    fn default() -> Self {
-        WeaponId::Pistol
-    }
-}
 
 /// Component for the player's currently equipped weapon
 #[derive(Component, Debug, Clone)]
@@ -144,6 +140,63 @@ pub struct Explosive {
     pub damage: f32,
 }
 
+/// Component for chain lightning projectiles (ChainReactor)
+/// Lightning jumps to nearby enemies on hit
+#[derive(Component, Debug, Clone)]
+pub struct ChainLightning {
+    /// Number of jumps remaining
+    pub jumps_remaining: u32,
+    /// Maximum distance for chain to jump
+    pub jump_range: f32,
+    /// Damage reduction per jump (0.8 = 80% damage each jump)
+    pub damage_falloff: f32,
+    /// Entities already hit (to avoid hitting same target twice)
+    pub already_hit: Vec<Entity>,
+}
+
+impl ChainLightning {
+    pub fn new(jumps: u32, range: f32, falloff: f32) -> Self {
+        Self {
+            jumps_remaining: jumps,
+            jump_range: range,
+            damage_falloff: falloff,
+            already_hit: Vec::new(),
+        }
+    }
+}
+
+/// Component for splitter projectiles (SplitterGun)
+/// Projectile splits into multiple smaller projectiles on hit
+#[derive(Component, Debug, Clone)]
+pub struct Splitter {
+    /// Number of splits remaining
+    pub splits_remaining: u32,
+    /// Number of projectiles to spawn on split
+    pub split_count: u32,
+    /// Damage multiplier for split projectiles
+    pub damage_multiplier: f32,
+}
+
+impl Splitter {
+    pub fn new(splits: u32, count: u32, damage_mult: f32) -> Self {
+        Self {
+            splits_remaining: splits,
+            split_count: count,
+            damage_multiplier: damage_mult,
+        }
+    }
+}
+
+/// Component for freezing projectiles (FreezeRay)
+/// Slows down enemies on hit
+#[derive(Component, Debug, Clone)]
+pub struct Freezing {
+    /// Slow multiplier (0.5 = 50% speed)
+    pub slow_amount: f32,
+    /// Duration of slow effect
+    pub duration: f32,
+}
+
 /// Marker for projectiles to be cleaned up
 #[derive(Component)]
 pub struct ProjectileDespawn;
@@ -158,6 +211,7 @@ pub struct ProjectileBundle {
 }
 
 impl ProjectileBundle {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         weapon_id: WeaponId,
         damage: f32,

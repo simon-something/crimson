@@ -5,6 +5,7 @@
 pub mod components;
 pub mod systems;
 
+#[allow(unused_imports)]
 pub use components::*;
 pub use systems::*;
 
@@ -22,6 +23,13 @@ impl Plugin for EffectsPlugin {
             .add_systems(
                 Update,
                 (
+                    // Event listeners that spawn effects
+                    spawn_blood_on_death,
+                    spawn_levelup_effect,
+                    spawn_pickup_effect,
+                    spawn_muzzle_flash,
+                    spawn_hit_effect,
+                    // Effect processing
                     handle_effect_spawns,
                     update_particles,
                     update_screen_shake,

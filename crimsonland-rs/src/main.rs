@@ -12,11 +12,13 @@ mod effects;
 mod perks;
 mod player;
 mod quests;
+mod rush;
 mod states;
+mod survival;
 mod ui;
 mod weapons;
 
-use states::{GameState, GameStatePlugin};
+use states::GameStatePlugin;
 
 fn main() {
     App::new()
@@ -40,6 +42,8 @@ fn main() {
         .add_plugins(effects::EffectsPlugin)
         .add_plugins(ui::UiPlugin)
         .add_plugins(audio::GameAudioPlugin)
+        .add_plugins(survival::SurvivalPlugin)
+        .add_plugins(rush::RushPlugin)
         .add_systems(Startup, setup_camera)
         .run();
 }

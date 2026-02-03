@@ -2,7 +2,11 @@
 
 use bevy::prelude::*;
 
-use crate::player::components::{Experience, Health, Player};
+use crate::perks::components::PerkInventory;
+use crate::player::components::{Experience, Health, Invincibility, Player};
+use crate::quests::systems::{ActiveQuest, QuestProgress};
+use crate::rush::RushState;
+use crate::survival::SurvivalState;
 use crate::weapons::components::EquippedWeapon;
 
 /// Marker for HUD root
@@ -32,6 +36,26 @@ pub struct AmmoText;
 /// Marker for weapon name text
 #[derive(Component)]
 pub struct WeaponText;
+
+/// Marker for kill counter text
+#[derive(Component)]
+pub struct KillCounterText;
+
+/// Marker for game timer text
+#[derive(Component)]
+pub struct GameTimerText;
+
+/// Marker for wave/progress indicator
+#[derive(Component)]
+pub struct WaveProgressText;
+
+/// Marker for perk count indicator
+#[derive(Component)]
+pub struct PerkCountText;
+
+/// Marker for invincibility indicator
+#[derive(Component)]
+pub struct InvincibilityIndicator;
 
 /// Sets up the HUD
 pub fn setup_hud(mut commands: Commands) {
@@ -117,6 +141,44 @@ pub fn setup_hud(mut commands: Commands) {
                                 });
                         });
 
+                    // Center stats section
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            // Game timer
+                            parent.spawn((
+                                GameTimerText,
+                                TextBundle::from_section(
+                                    "0:00",
+                                    TextStyle {
+                                        font_size: 28.0,
+                                        color: Color::WHITE,
+                                        ..default()
+                                    },
+                                ),
+                            ));
+
+                            // Wave/progress text
+                            parent.spawn((
+                                WaveProgressText,
+                                TextBundle::from_section(
+                                    "",
+                                    TextStyle {
+                                        font_size: 16.0,
+                                        color: Color::srgb(0.8, 0.8, 0.5),
+                                        ..default()
+                                    },
+                                ),
+                            ));
+                        });
+
                     // Level/XP section
                     parent
                         .spawn(NodeBundle {
@@ -171,14 +233,14 @@ pub fn setup_hud(mut commands: Commands) {
                         });
                 });
 
-            // Bottom bar (weapon, ammo)
+            // Bottom bar (weapon, ammo, kills, perks)
             parent
                 .spawn(NodeBundle {
                     style: Style {
                         width: Val::Percent(100.0),
                         height: Val::Px(50.0),
                         flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::Center,
+                        justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
                         padding: UiRect::all(Val::Px(10.0)),
                         ..default()
@@ -187,38 +249,102 @@ pub fn setup_hud(mut commands: Commands) {
                     ..default()
                 })
                 .with_children(|parent| {
+                    // Kill counter (left side)
                     parent.spawn((
-                        WeaponText,
+                        KillCounterText,
                         TextBundle::from_section(
-                            "Pistol",
+                            "Kills: 0",
                             TextStyle {
-                                font_size: 24.0,
-                                color: Color::srgb(1.0, 0.8, 0.3),
+                                font_size: 20.0,
+                                color: Color::srgb(1.0, 0.5, 0.5),
                                 ..default()
                             },
                         ),
                     ));
 
-                    parent.spawn(TextBundle::from_section(
-                        " - ",
-                        TextStyle {
-                            font_size: 24.0,
-                            color: Color::WHITE,
+                    // Weapon section (center)
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
                             ..default()
-                        },
-                    ));
+                        })
+                        .with_children(|parent| {
+                            parent.spawn((
+                                WeaponText,
+                                TextBundle::from_section(
+                                    "Pistol",
+                                    TextStyle {
+                                        font_size: 24.0,
+                                        color: Color::srgb(1.0, 0.8, 0.3),
+                                        ..default()
+                                    },
+                                ),
+                            ));
 
-                    parent.spawn((
-                        AmmoText,
-                        TextBundle::from_section(
-                            "∞",
-                            TextStyle {
-                                font_size: 24.0,
-                                color: Color::WHITE,
+                            parent.spawn(TextBundle::from_section(
+                                " - ",
+                                TextStyle {
+                                    font_size: 24.0,
+                                    color: Color::WHITE,
+                                    ..default()
+                                },
+                            ));
+
+                            parent.spawn((
+                                AmmoText,
+                                TextBundle::from_section(
+                                    "∞",
+                                    TextStyle {
+                                        font_size: 24.0,
+                                        color: Color::WHITE,
+                                        ..default()
+                                    },
+                                ),
+                            ));
+                        });
+
+                    // Right side: perk count and power-up indicators
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(10.0),
                                 ..default()
                             },
-                        ),
-                    ));
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            // Invincibility indicator (hidden by default)
+                            parent.spawn((
+                                InvincibilityIndicator,
+                                TextBundle::from_section(
+                                    "",
+                                    TextStyle {
+                                        font_size: 18.0,
+                                        color: Color::srgb(1.0, 1.0, 0.3),
+                                        ..default()
+                                    },
+                                ),
+                            ));
+
+                            // Perk count
+                            parent.spawn((
+                                PerkCountText,
+                                TextBundle::from_section(
+                                    "Perks: 0",
+                                    TextStyle {
+                                        font_size: 20.0,
+                                        color: Color::srgb(0.6, 0.9, 0.6),
+                                        ..default()
+                                    },
+                                ),
+                            ));
+                        });
                 });
         });
 }
@@ -230,7 +356,8 @@ pub fn cleanup_hud(mut commands: Commands, query: Query<Entity, With<HudRoot>>) 
     }
 }
 
-/// Updates HUD elements based on player state
+/// Updates basic HUD elements (health, XP, level, weapon)
+#[allow(clippy::type_complexity)]
 pub fn update_hud(
     player_query: Query<(&Health, &Experience, &EquippedWeapon), With<Player>>,
     mut health_bar_query: Query<&mut Style, With<HealthBar>>,
@@ -304,6 +431,124 @@ pub fn update_hud(
             Some(ammo) => format!("{}", ammo),
             None => "∞".into(),
         };
+    }
+}
+
+/// Updates perk count and invincibility indicator
+#[allow(clippy::type_complexity)]
+pub fn update_hud_perks(
+    player_query: Query<(&PerkInventory, Option<&Invincibility>), With<Player>>,
+    mut perk_text_query: Query<&mut Text, With<PerkCountText>>,
+    mut invincibility_text_query: Query<
+        &mut Text,
+        (With<InvincibilityIndicator>, Without<PerkCountText>),
+    >,
+) {
+    let Ok((perk_inventory, invincibility)) = player_query.get_single() else {
+        return;
+    };
+
+    // Update perk count
+    if let Ok(mut text) = perk_text_query.get_single_mut() {
+        text.sections[0].value = format!("Perks: {}", perk_inventory.total_perks());
+    }
+
+    // Update invincibility indicator
+    if let Ok(mut text) = invincibility_text_query.get_single_mut() {
+        if let Some(inv) = invincibility {
+            if inv.is_active() {
+                text.sections[0].value = format!("SHIELD {:.1}s", inv.timer);
+            } else {
+                text.sections[0].value.clear();
+            }
+        } else {
+            text.sections[0].value.clear();
+        }
+    }
+}
+
+/// Updates game mode specific HUD elements (timer, kills, wave)
+#[allow(clippy::type_complexity)]
+pub fn update_hud_game_mode(
+    survival_state: Option<Res<SurvivalState>>,
+    rush_state: Option<Res<RushState>>,
+    quest_progress: Option<Res<QuestProgress>>,
+    active_quest: Option<Res<ActiveQuest>>,
+    mut kill_text_query: Query<&mut Text, With<KillCounterText>>,
+    mut timer_text_query: Query<&mut Text, (With<GameTimerText>, Without<KillCounterText>)>,
+    mut wave_text_query: Query<
+        &mut Text,
+        (
+            With<WaveProgressText>,
+            Without<GameTimerText>,
+            Without<KillCounterText>,
+        ),
+    >,
+) {
+    // Update kill counter based on game mode
+    if let Ok(mut text) = kill_text_query.get_single_mut() {
+        if let Some(ref survival) = survival_state {
+            text.sections[0].value = format!("Kills: {}", survival.kills);
+        } else if let Some(ref rush) = rush_state {
+            text.sections[0].value = format!("Kills: {} | Score: {}", rush.total_kills, rush.score);
+        } else if let Some(ref progress) = quest_progress {
+            text.sections[0].value = format!("Kills: {}", progress.kills);
+        } else {
+            text.sections[0].value = "Kills: 0".to_string();
+        }
+    }
+
+    // Update game timer based on game mode
+    if let Ok(mut text) = timer_text_query.get_single_mut() {
+        if let Some(ref survival) = survival_state {
+            let mins = (survival.game_time / 60.0) as u32;
+            let secs = (survival.game_time % 60.0) as u32;
+            text.sections[0].value = format!("{}:{:02}", mins, secs);
+        } else if let Some(ref rush) = rush_state {
+            let mins = (rush.time_remaining / 60.0) as u32;
+            let secs = (rush.time_remaining % 60.0) as u32;
+            // Change color based on time remaining
+            text.sections[0].style.color = if rush.time_remaining < 10.0 {
+                Color::srgb(1.0, 0.3, 0.3) // Red when low
+            } else if rush.time_remaining < 30.0 {
+                Color::srgb(1.0, 0.8, 0.3) // Yellow when medium
+            } else {
+                Color::WHITE
+            };
+            text.sections[0].value = format!("{}:{:02}", mins, secs);
+        } else if let Some(ref progress) = quest_progress {
+            let mins = (progress.total_time / 60.0) as u32;
+            let secs = (progress.total_time % 60.0) as u32;
+            text.sections[0].value = format!("{}:{:02}", mins, secs);
+        } else {
+            text.sections[0].value = "0:00".to_string();
+        }
+    }
+
+    // Update wave/progress text based on game mode
+    if let Ok(mut text) = wave_text_query.get_single_mut() {
+        if survival_state.is_some() {
+            text.sections[0].value = "SURVIVAL".to_string();
+        } else if let Some(ref rush) = rush_state {
+            let streak_text = if rush.kill_streak >= 5 {
+                format!(" | x{:.1} STREAK", rush.streak_multiplier())
+            } else {
+                String::new()
+            };
+            text.sections[0].value = format!("RUSH{}", streak_text);
+        } else if let Some(ref progress) = quest_progress {
+            if active_quest
+                .as_ref()
+                .map(|q| q.quest_id.is_some())
+                .unwrap_or(false)
+            {
+                text.sections[0].value = format!("Wave {}", progress.current_wave + 1);
+            } else {
+                text.sections[0].value.clear();
+            }
+        } else {
+            text.sections[0].value.clear();
+        }
     }
 }
 

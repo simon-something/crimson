@@ -4,6 +4,11 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use super::components::*;
+use crate::bonuses::systems::BonusCollectedEvent;
+use crate::creatures::systems::CreatureDeathEvent;
+use crate::player::components::Player;
+use crate::player::systems::PlayerLevelUpEvent;
+use crate::weapons::systems::{FireWeaponEvent, ProjectileHitEvent};
 
 /// Event to spawn an effect
 #[derive(Event)]
@@ -185,6 +190,90 @@ pub fn cleanup_expired_effects(mut commands: Commands, query: Query<(Entity, &Pa
 pub fn cleanup_all_effects(mut commands: Commands, query: Query<Entity, With<Effect>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn_recursive();
+    }
+}
+
+/// Spawns blood effects when creatures die
+pub fn spawn_blood_on_death(
+    mut death_events: EventReader<CreatureDeathEvent>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+) {
+    for event in death_events.read() {
+        // Spawn blood splatter
+        effect_events.send(SpawnEffectEvent {
+            effect_type: EffectType::BloodSplatter,
+            position: event.position,
+            count: 8,
+        });
+
+        // Also spawn death effect for larger impact
+        effect_events.send(SpawnEffectEvent {
+            effect_type: EffectType::Death,
+            position: event.position,
+            count: 1,
+        });
+    }
+}
+
+/// Spawns level up effect at player position
+pub fn spawn_levelup_effect(
+    mut levelup_events: EventReader<PlayerLevelUpEvent>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    for event in levelup_events.read() {
+        if let Ok(transform) = player_query.get(event.player_entity) {
+            effect_events.send(SpawnEffectEvent {
+                effect_type: EffectType::LevelUp,
+                position: transform.translation,
+                count: 1,
+            });
+        }
+    }
+}
+
+/// Spawns pickup effect when bonuses are collected
+pub fn spawn_pickup_effect(
+    mut bonus_events: EventReader<BonusCollectedEvent>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    for event in bonus_events.read() {
+        if let Ok(transform) = player_query.get(event.player_entity) {
+            effect_events.send(SpawnEffectEvent {
+                effect_type: EffectType::PickupCollect,
+                position: transform.translation,
+                count: 1,
+            });
+        }
+    }
+}
+
+/// Spawns muzzle flash when weapons fire
+pub fn spawn_muzzle_flash(
+    mut fire_events: EventReader<FireWeaponEvent>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+) {
+    for event in fire_events.read() {
+        effect_events.send(SpawnEffectEvent {
+            effect_type: EffectType::MuzzleFlash,
+            position: event.position,
+            count: 1,
+        });
+    }
+}
+
+/// Spawns bullet impact effect when projectiles hit
+pub fn spawn_hit_effect(
+    mut hit_events: EventReader<ProjectileHitEvent>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+) {
+    for event in hit_events.read() {
+        effect_events.send(SpawnEffectEvent {
+            effect_type: EffectType::BulletImpact,
+            position: event.position,
+            count: 3,
+        });
     }
 }
 

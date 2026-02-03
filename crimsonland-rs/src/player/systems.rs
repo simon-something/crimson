@@ -2,9 +2,12 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use rand::Rng;
 
 use super::components::*;
 use super::resources::*;
+use crate::creatures::systems::CreatureDeathEvent;
+use crate::perks::components::{PerkBonuses, PerkInventory};
 use crate::states::GameState;
 use crate::weapons::components::EquippedWeapon;
 
@@ -51,6 +54,9 @@ pub fn spawn_player(mut commands: Commands, config: Res<PlayerConfig>) {
         },
         Invincibility::new(config.spawn_invincibility_duration),
         EquippedWeapon::default(),
+        // Perk system components
+        PerkInventory::new(),
+        PerkBonuses::default(),
     ));
 }
 
@@ -135,14 +141,17 @@ pub fn player_shooting(
 }
 
 /// Applies damage to players from damage events
+/// Integrates perk bonuses: damage_reduction reduces incoming damage, dodge_chance can avoid hits entirely
 pub fn apply_player_damage(
     mut events: EventReader<PlayerDamageEvent>,
-    mut query: Query<(&mut Health, Option<&mut Invincibility>), With<Player>>,
+    mut query: Query<(&mut Health, Option<&mut Invincibility>, &PerkBonuses), With<Player>>,
     config: Res<PlayerConfig>,
     mut commands: Commands,
 ) {
+    let mut rng = rand::thread_rng();
+
     for event in events.read() {
-        if let Ok((mut health, invincibility)) = query.get_mut(event.player_entity) {
+        if let Ok((mut health, invincibility, perk_bonuses)) = query.get_mut(event.player_entity) {
             // Skip if invincible
             if let Some(inv) = &invincibility {
                 if inv.is_active() {
@@ -150,7 +159,14 @@ pub fn apply_player_damage(
                 }
             }
 
-            health.damage(event.damage);
+            // Dodge check - chance to completely avoid damage (Dodger perk)
+            if perk_bonuses.dodge_chance > 0.0 && rng.gen::<f32>() < perk_bonuses.dodge_chance {
+                continue; // Dodged!
+            }
+
+            // Apply damage reduction (ThickSkin perk)
+            let reduced_damage = event.damage * (1.0 - perk_bonuses.damage_reduction);
+            health.damage(reduced_damage);
 
             // Grant invincibility after taking damage
             commands
@@ -201,6 +217,32 @@ pub fn update_player_experience(
 pub fn player_invincibility_timer(time: Res<Time>, mut query: Query<&mut Invincibility>) {
     for mut inv in query.iter_mut() {
         inv.tick(time.delta_seconds());
+    }
+}
+
+/// Grants experience to players when creatures die
+/// Applies exp_multiplier from perks (FastLearner)
+pub fn grant_experience_on_kill(
+    mut death_events: EventReader<CreatureDeathEvent>,
+    mut player_query: Query<(&mut Experience, &PerkBonuses), With<Player>>,
+    mut level_up_events: EventWriter<PlayerLevelUpEvent>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    for event in death_events.read() {
+        // Grant experience to all players (for potential multiplayer support)
+        for (mut exp, perk_bonuses) in player_query.iter_mut() {
+            // Apply exp multiplier from FastLearner perk
+            let exp_amount = (event.experience as f32 * perk_bonuses.exp_multiplier) as u32;
+            let leveled_up = exp.add(exp_amount);
+
+            if leveled_up {
+                level_up_events.send(PlayerLevelUpEvent {
+                    player_entity: Entity::PLACEHOLDER, // TODO: Get actual player entity
+                    new_level: exp.level,
+                });
+                next_state.set(GameState::PerkSelect);
+            }
+        }
     }
 }
 

@@ -4,8 +4,14 @@ use bevy::prelude::*;
 
 use super::{text_style, GameOverUi, MainMenuUi, PauseMenuUi, VictoryUi};
 use crate::quests::database::QuestId;
-use crate::quests::systems::ActiveQuest;
+use crate::quests::systems::{ActiveQuest, QuestProgress};
+use crate::rush::{RushLoadout, RushState};
 use crate::states::GameState;
+use crate::survival::SurvivalState;
+
+/// Marker for stats text on end screens
+#[derive(Component)]
+pub struct EndScreenStats;
 
 /// Sets up the main menu
 pub fn setup_main_menu(mut commands: Commands) {
@@ -46,18 +52,31 @@ pub fn setup_main_menu(mut commands: Commands) {
 
             // Menu options
             parent.spawn(TextBundle::from_section(
-                "Press ENTER to Start Quest Mode",
-                text_style(28.0, Color::WHITE),
+                "[ENTER] Quest Mode - Story missions",
+                text_style(24.0, Color::WHITE),
             ));
 
             parent.spawn(TextBundle::from_section(
-                "Press S for Survival Mode",
-                text_style(28.0, Color::srgb(0.7, 0.7, 0.7)),
+                "[S] Survival Mode - Endless waves",
+                text_style(24.0, Color::srgb(0.7, 0.9, 0.7)),
             ));
 
             parent.spawn(TextBundle::from_section(
-                "Press ESC to Quit",
-                text_style(28.0, Color::srgb(0.7, 0.7, 0.7)),
+                "[R] Rush Mode - Timed challenge",
+                text_style(24.0, Color::srgb(0.9, 0.7, 0.7)),
+            ));
+
+            parent.spawn(NodeBundle {
+                style: Style {
+                    height: Val::Px(20.0),
+                    ..default()
+                },
+                ..default()
+            });
+
+            parent.spawn(TextBundle::from_section(
+                "[ESC] Quit",
+                text_style(20.0, Color::srgb(0.5, 0.5, 0.5)),
             ));
 
             parent.spawn(NodeBundle {
@@ -84,6 +103,7 @@ pub fn cleanup_main_menu(mut commands: Commands, query: Query<Entity, With<MainM
 
 /// Handles main menu input
 pub fn handle_main_menu_input(
+    mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut active_quest: ResMut<ActiveQuest>,
@@ -98,6 +118,13 @@ pub fn handle_main_menu_input(
     if keyboard.just_pressed(KeyCode::KeyS) {
         // Survival mode (no specific quest)
         active_quest.quest_id = None;
+        next_state.set(GameState::Playing);
+    }
+
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        // Rush mode - 2 minute timed challenge
+        active_quest.quest_id = None;
+        commands.insert_resource(RushState::new(120.0, RushLoadout::default()));
         next_state.set(GameState::Playing);
     }
 
@@ -174,7 +201,41 @@ pub fn handle_pause_menu_input(
 }
 
 /// Sets up the game over screen
-pub fn setup_game_over(mut commands: Commands) {
+pub fn setup_game_over(
+    mut commands: Commands,
+    survival_state: Option<Res<SurvivalState>>,
+    rush_state: Option<Res<RushState>>,
+    quest_progress: Option<Res<QuestProgress>>,
+) {
+    // Gather stats from the current game mode
+    let (time_str, kills_str, extra_str) = if let Some(ref rush) = rush_state {
+        let mins = (rush.round_duration - rush.time_remaining) as u32 / 60;
+        let secs = (rush.round_duration - rush.time_remaining) as u32 % 60;
+        (
+            format!("Time: {}:{:02}", mins, secs),
+            format!("Kills: {}", rush.total_kills),
+            format!("Score: {}", rush.score),
+        )
+    } else if let Some(ref survival) = survival_state {
+        let mins = survival.game_time as u32 / 60;
+        let secs = survival.game_time as u32 % 60;
+        (
+            format!("Time: {}:{:02}", mins, secs),
+            format!("Kills: {}", survival.kills),
+            String::new(),
+        )
+    } else if let Some(ref progress) = quest_progress {
+        let mins = progress.total_time as u32 / 60;
+        let secs = progress.total_time as u32 % 60;
+        (
+            format!("Time: {}:{:02}", mins, secs),
+            format!("Kills: {}", progress.kills),
+            format!("Wave: {}", progress.current_wave + 1),
+        )
+    } else {
+        (String::new(), String::new(), String::new())
+    };
+
     commands
         .spawn((
             GameOverUi,
@@ -203,20 +264,48 @@ pub fn setup_game_over(mut commands: Commands) {
 
             parent.spawn(NodeBundle {
                 style: Style {
-                    height: Val::Px(50.0),
+                    height: Val::Px(30.0),
+                    ..default()
+                },
+                ..default()
+            });
+
+            // Stats
+            if !time_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(&time_str, text_style(24.0, Color::srgb(0.8, 0.8, 0.8))),
+                ));
+            }
+            if !kills_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(&kills_str, text_style(24.0, Color::srgb(0.8, 0.8, 0.8))),
+                ));
+            }
+            if !extra_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(&extra_str, text_style(24.0, Color::srgb(1.0, 0.9, 0.5))),
+                ));
+            }
+
+            parent.spawn(NodeBundle {
+                style: Style {
+                    height: Val::Px(30.0),
                     ..default()
                 },
                 ..default()
             });
 
             parent.spawn(TextBundle::from_section(
-                "Press ENTER to Retry",
-                text_style(28.0, Color::WHITE),
+                "[ENTER] Retry",
+                text_style(24.0, Color::WHITE),
             ));
 
             parent.spawn(TextBundle::from_section(
-                "Press ESC to Return to Menu",
-                text_style(28.0, Color::srgb(0.7, 0.7, 0.7)),
+                "[ESC] Return to Menu",
+                text_style(20.0, Color::srgb(0.6, 0.6, 0.6)),
             ));
         });
 }
@@ -243,7 +332,34 @@ pub fn handle_game_over_input(
 }
 
 /// Sets up the victory screen
-pub fn setup_victory(mut commands: Commands) {
+pub fn setup_victory(
+    mut commands: Commands,
+    quest_progress: Option<Res<QuestProgress>>,
+    rush_state: Option<Res<RushState>>,
+) {
+    // Gather stats
+    let (title, time_str, kills_str, extra_str) = if let Some(ref rush) = rush_state {
+        let mins = rush.round_duration as u32 / 60;
+        let secs = rush.round_duration as u32 % 60;
+        (
+            "RUSH COMPLETE!",
+            format!("Time: {}:{:02}", mins, secs),
+            format!("Kills: {}", rush.total_kills),
+            format!("Final Score: {}", rush.score),
+        )
+    } else if let Some(ref progress) = quest_progress {
+        let mins = progress.total_time as u32 / 60;
+        let secs = progress.total_time as u32 % 60;
+        (
+            "QUEST COMPLETE!",
+            format!("Time: {}:{:02}", mins, secs),
+            format!("Total Kills: {}", progress.kills),
+            String::new(),
+        )
+    } else {
+        ("VICTORY!", String::new(), String::new(), String::new())
+    };
+
     commands
         .spawn((
             VictoryUi,
@@ -262,25 +378,12 @@ pub fn setup_victory(mut commands: Commands) {
         ))
         .with_children(|parent| {
             parent.spawn(TextBundle::from_section(
-                "VICTORY!",
+                title,
                 TextStyle {
                     font_size: 64.0,
                     color: Color::srgb(0.2, 0.9, 0.2),
                     ..default()
                 },
-            ));
-
-            parent.spawn(NodeBundle {
-                style: Style {
-                    height: Val::Px(50.0),
-                    ..default()
-                },
-                ..default()
-            });
-
-            parent.spawn(TextBundle::from_section(
-                "Quest Complete!",
-                text_style(28.0, Color::WHITE),
             ));
 
             parent.spawn(NodeBundle {
@@ -291,14 +394,45 @@ pub fn setup_victory(mut commands: Commands) {
                 ..default()
             });
 
+            // Stats
+            if !time_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(&time_str, text_style(24.0, Color::srgb(0.8, 0.8, 0.8))),
+                ));
+            }
+            if !kills_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(&kills_str, text_style(24.0, Color::srgb(0.8, 0.8, 0.8))),
+                ));
+            }
+            if !extra_str.is_empty() {
+                parent.spawn((
+                    EndScreenStats,
+                    TextBundle::from_section(
+                        &extra_str,
+                        text_style(28.0, Color::srgb(1.0, 0.9, 0.3)),
+                    ),
+                ));
+            }
+
+            parent.spawn(NodeBundle {
+                style: Style {
+                    height: Val::Px(30.0),
+                    ..default()
+                },
+                ..default()
+            });
+
             parent.spawn(TextBundle::from_section(
-                "Press ENTER to Continue",
-                text_style(24.0, Color::srgb(0.7, 0.7, 0.7)),
+                "[ENTER] Continue",
+                text_style(24.0, Color::WHITE),
             ));
 
             parent.spawn(TextBundle::from_section(
-                "Press ESC to Return to Menu",
-                text_style(24.0, Color::srgb(0.7, 0.7, 0.7)),
+                "[ESC] Return to Menu",
+                text_style(20.0, Color::srgb(0.6, 0.6, 0.6)),
             ));
         });
 }

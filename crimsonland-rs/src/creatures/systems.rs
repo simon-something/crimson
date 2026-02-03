@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use super::components::*;
 use super::spawner::{calculate_spawn_position, SpawnConfig};
-use crate::player::components::{Health, Player};
+use crate::player::components::Player;
 use crate::player::systems::PlayerDamageEvent;
 
 /// Event to spawn a creature
@@ -46,8 +46,9 @@ pub fn handle_creature_spawns(
 }
 
 /// Updates AI state for all creatures
+#[allow(clippy::type_complexity)]
 pub fn creature_ai_update(
-    player_query: Query<(Entity, &Transform), With<Player>>,
+    player_query: Query<(Entity, &Transform), (With<Player>, Without<Creature>)>,
     mut creature_query: Query<(&Transform, &mut AIState, &Creature)>,
     time: Res<Time>,
 ) {
@@ -112,7 +113,7 @@ pub fn creature_ai_update(
 
 /// Moves creatures based on their AI state
 pub fn creature_movement(
-    player_query: Query<&Transform, With<Player>>,
+    player_query: Query<&Transform, (With<Player>, Without<Creature>)>,
     mut creature_query: Query<(&mut Transform, &AIState, &CreatureSpeed), With<Creature>>,
     time: Res<Time>,
 ) {
@@ -166,18 +167,20 @@ pub fn creature_movement(
 }
 
 /// Handles creature attacks on players
+/// Creatures deal contact damage when touching the player
+#[allow(clippy::type_complexity)]
 pub fn creature_attack(
-    creature_query: Query<
-        (&Transform, &AIState, &ContactDamage, &Creature),
+    mut creature_query: Query<
+        (&Transform, &mut AIState, &ContactDamage, &Creature),
         Without<MarkedForDespawn>,
     >,
-    player_query: Query<(Entity, &Transform), With<Player>>,
+    player_query: Query<(Entity, &Transform), (With<Player>, Without<Creature>)>,
     mut damage_events: EventWriter<PlayerDamageEvent>,
 ) {
     const ATTACK_RANGE: f32 = 32.0; // Contact distance
     const ATTACK_COOLDOWN: f32 = 1.0;
 
-    for (creature_transform, ai_state, damage, _creature) in creature_query.iter() {
+    for (creature_transform, mut ai_state, damage, _creature) in creature_query.iter_mut() {
         if ai_state.mode == AIMode::Dead || ai_state.attack_cooldown > 0.0 {
             continue;
         }
@@ -194,8 +197,8 @@ pub fn creature_attack(
                     damage: damage.0,
                     source: None,
                 });
-                // Note: We'd need to update attack_cooldown here, but it requires
-                // mutable access to AIState which we'd handle with a separate component
+                // Set attack cooldown after dealing damage
+                ai_state.attack_cooldown = ATTACK_COOLDOWN;
                 break;
             }
         }

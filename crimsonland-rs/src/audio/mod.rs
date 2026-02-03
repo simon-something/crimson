@@ -7,7 +7,6 @@ pub mod systems;
 pub use systems::*;
 
 use bevy::prelude::*;
-use bevy_kira_audio::prelude::*;
 
 use crate::states::GameState;
 
@@ -17,6 +16,7 @@ pub struct GameAudioPlugin;
 impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AudioSettings>()
+            .init_resource::<CurrentMusic>()
             .add_systems(OnEnter(GameState::MainMenu), start_menu_music)
             .add_systems(OnExit(GameState::MainMenu), stop_menu_music)
             .add_systems(OnEnter(GameState::Playing), start_game_music)

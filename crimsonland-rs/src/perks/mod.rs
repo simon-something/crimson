@@ -6,6 +6,7 @@ pub mod components;
 pub mod registry;
 pub mod systems;
 
+#[allow(unused_imports)]
 pub use components::*;
 pub use registry::*;
 pub use systems::*;
@@ -24,7 +25,10 @@ impl Plugin for PerksPlugin {
             .add_systems(OnEnter(GameState::PerkSelect), setup_perk_selection)
             .add_systems(
                 Update,
-                apply_perk_effects.run_if(in_state(GameState::Playing)),
+                (
+                    apply_perk_effects.run_if(in_state(GameState::Playing)),
+                    handle_perk_selection.run_if(in_state(GameState::PerkSelect)),
+                ),
             );
     }
 }

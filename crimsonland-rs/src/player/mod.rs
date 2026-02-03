@@ -6,6 +6,7 @@ pub mod components;
 pub mod resources;
 pub mod systems;
 
+#[allow(unused_imports)]
 pub use components::*;
 pub use resources::*;
 pub use systems::*;
@@ -35,6 +36,7 @@ impl Plugin for PlayerPlugin {
                     check_player_death,
                     update_player_experience,
                     player_invincibility_timer,
+                    grant_experience_on_kill,
                 )
                     .run_if(in_state(GameState::Playing)),
             );

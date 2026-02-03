@@ -30,7 +30,11 @@ impl Plugin for UiPlugin {
             // HUD
             .add_systems(OnEnter(GameState::Playing), setup_hud)
             .add_systems(OnExit(GameState::Playing), cleanup_hud)
-            .add_systems(Update, update_hud.run_if(in_state(GameState::Playing)))
+            .add_systems(
+                Update,
+                (update_hud, update_hud_perks, update_hud_game_mode)
+                    .run_if(in_state(GameState::Playing)),
+            )
             // Pause menu
             .add_systems(OnEnter(GameState::Paused), setup_pause_menu)
             .add_systems(OnExit(GameState::Paused), cleanup_pause_menu)

@@ -30,6 +30,7 @@ pub fn handle_bonus_spawns(mut commands: Commands, mut events: EventReader<Spawn
 }
 
 /// Attracts bonuses toward nearby players
+#[allow(clippy::type_complexity)]
 pub fn bonus_attraction(
     time: Res<Time>,
     player_query: Query<(Entity, &Transform), With<Player>>,
@@ -110,7 +111,7 @@ pub fn apply_bonus_effects(
         ),
         With<Player>,
     >,
-    mut commands: Commands,
+    _commands: Commands,
     creatures: Query<Entity, (With<Creature>, Without<MarkedForDespawn>)>,
     mut creature_health: Query<&mut CreatureHealth>,
 ) {

@@ -6,6 +6,7 @@ pub mod components;
 pub mod registry;
 pub mod systems;
 
+#[allow(unused_imports)]
 pub use components::*;
 pub use registry::*;
 pub use systems::*;
@@ -27,6 +28,7 @@ impl Plugin for WeaponsPlugin {
                 Update,
                 (
                     fire_weapon_system,
+                    homing_projectile_update,
                     projectile_movement,
                     projectile_collision,
                     projectile_lifetime,

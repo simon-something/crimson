@@ -2,9 +2,9 @@
 
 use bevy::prelude::*;
 
-use super::database::{QuestData, QuestDatabase, QuestId};
+use super::database::{QuestDatabase, QuestId};
 use crate::creatures::components::{Creature, MarkedForDespawn};
-use crate::creatures::systems::SpawnCreatureEvent;
+use crate::creatures::systems::{CreatureDeathEvent, SpawnCreatureEvent};
 use crate::states::GameState;
 
 /// Currently active quest
@@ -305,5 +305,20 @@ mod tests {
             kills: 100,
         };
         assert_eq!(event.kills, 100);
+    }
+}
+
+/// Run condition: only run if a quest is active
+pub fn quest_is_active(active_quest: Res<ActiveQuest>) -> bool {
+    active_quest.quest_id.is_some()
+}
+
+/// Tracks kills from creature death events
+pub fn track_quest_kills(
+    mut progress: ResMut<QuestProgress>,
+    mut death_events: EventReader<CreatureDeathEvent>,
+) {
+    for _event in death_events.read() {
+        progress.kills += 1;
     }
 }

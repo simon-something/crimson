@@ -3,16 +3,10 @@
 use bevy::prelude::*;
 
 /// Marker component for player entities
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Default)]
 pub struct Player {
     /// Player index (0-3 for multiplayer support)
     pub index: u8,
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        Self { index: 0 }
-    }
 }
 
 /// Health component for entities that can take damage

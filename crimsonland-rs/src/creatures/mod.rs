@@ -6,6 +6,7 @@ pub mod components;
 pub mod spawner;
 pub mod systems;
 
+#[allow(unused_imports)]
 pub use components::*;
 pub use spawner::*;
 pub use systems::*;
