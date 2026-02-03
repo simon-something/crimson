@@ -121,10 +121,6 @@ impl CarriedItem {
         Self { item: None }
     }
 
-    pub fn has_item(&self) -> bool {
-        self.item.is_some()
-    }
-
     pub fn set_item(&mut self, item: ItemType) {
         self.item = Some(item);
     }

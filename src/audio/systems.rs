@@ -142,8 +142,9 @@ pub fn play_sound_effects(
         play_sfx(&audio, &settings, &asset_server, sound);
     }
 
-    // Process item pickups
-    for _event in item_pickups.read() {
+    // Process item pickups - log what was picked up
+    for event in item_pickups.read() {
+        info!("Picked up {:?} (replaced: {:?})", event.item_type, event.replaced);
         play_sfx(&audio, &settings, &asset_server, SoundEffect::ItemPickup);
     }
 

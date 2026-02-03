@@ -21,7 +21,6 @@ pub struct ItemUsedEvent {
 /// Event fired when a player picks up an item
 #[derive(Event)]
 pub struct ItemPickedUpEvent {
-    pub player_entity: Entity,
     pub item_type: ItemType,
     pub replaced: Option<ItemType>,
 }
@@ -194,7 +193,7 @@ pub fn collect_items(
 ) {
     const PICKUP_RADIUS: f32 = 30.0;
 
-    for (player_entity, player_transform, mut carried) in player_query.iter_mut() {
+    for (_player_entity, player_transform, mut carried) in player_query.iter_mut() {
         let player_pos = player_transform.translation.truncate();
 
         for (pickup_entity, pickup_transform, pickup) in pickup_query.iter() {
@@ -207,7 +206,6 @@ pub fn collect_items(
                 carried.set_item(pickup.item_type);
 
                 pickup_events.send(ItemPickedUpEvent {
-                    player_entity,
                     item_type: pickup.item_type,
                     replaced,
                 });
@@ -247,12 +245,6 @@ pub fn spawn_item_at(commands: &mut Commands, item_type: ItemType, position: Vec
     commands.spawn(ItemPickupBundle::new(item_type, position));
 }
 
-/// Helper function to spawn a random item pickup
-pub fn spawn_random_item_at(commands: &mut Commands, position: Vec3) {
-    let item_type = ItemType::random();
-    spawn_item_at(commands, item_type, position);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,7 +262,6 @@ mod tests {
     #[test]
     fn item_picked_up_event_can_be_created() {
         let event = ItemPickedUpEvent {
-            player_entity: Entity::PLACEHOLDER,
             item_type: ItemType::Shield,
             replaced: Some(ItemType::Freeze),
         };
