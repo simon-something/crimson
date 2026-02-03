@@ -1,0 +1,33 @@
+[package]
+name = "crimsonland-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Crimsonland port to Rust using Bevy ECS"
+license = "MIT"
+
+[dependencies]
+bevy = { version = "0.14", features = ["dynamic_linking"] }
+bevy_kira_audio = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.8"
+rand = "0.8"
+
+[dev-dependencies]
+proptest = "1.4"
+
+# Enable optimizations for dependencies in debug builds for better performance
+[profile.dev.package."*"]
+opt-level = 3
+
+# Optimize release builds
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Fast compile profile for development
+[profile.dev]
+opt-level = 1
+
+[[bin]]
+name = "crimsonland"
+path = "src/main.rs"
