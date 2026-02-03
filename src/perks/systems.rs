@@ -44,12 +44,12 @@ pub fn apply_perk_effects(
             health.heal(heal_amount);
         }
 
-        // Apply max health bonus
-        let base_max = config.base_health + bonuses.max_health_bonus;
-        if health.max != base_max {
+        // Apply max health multiplier (ThickSkinned reduces to 2/3)
+        let adjusted_max = config.base_health * bonuses.max_health_multiplier;
+        if (health.max - adjusted_max).abs() > 0.01 {
             let health_percent = health.percentage();
-            health.max = base_max;
-            health.current = base_max * health_percent;
+            health.max = adjusted_max;
+            health.current = adjusted_max * health_percent;
         }
 
         // Apply speed multiplier
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn perk_bonuses_apply_speed() {
         let mut inventory = PerkInventory::new();
-        inventory.add_perk(PerkId::SpeedBoost);
+        inventory.add_perk(PerkId::LongDistanceRunner);
 
         let bonuses = PerkBonuses::calculate(&inventory);
         assert!(bonuses.speed_multiplier > 1.0);
