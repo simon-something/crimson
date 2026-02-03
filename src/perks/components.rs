@@ -128,14 +128,6 @@ impl PerkInventory {
     pub fn total_perks(&self) -> u32 {
         self.counts.iter().map(|&c| c as u32).sum()
     }
-
-    /// Creates an inventory with a single perk (for testing)
-    #[cfg(test)]
-    pub fn with_perk(perk: PerkId) -> Self {
-        let mut inv = Self::new();
-        inv.add_perk(perk);
-        inv
-    }
 }
 
 /// Computed perk bonuses for quick access during gameplay
