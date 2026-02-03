@@ -6,7 +6,6 @@ use super::components::{PerkBonuses, PerkId, PerkInventory};
 use super::registry::PerkRegistry;
 use crate::player::components::{Health, MoveSpeed, Player};
 use crate::player::resources::PlayerConfig;
-use crate::states::GameState;
 
 /// Event when a perk is selected
 #[derive(Event)]
@@ -58,20 +57,21 @@ pub fn apply_perk_effects(
     }
 }
 
-/// Handles perk selection events
+/// Handles perk selection events (for external listeners)
+/// Note: The actual perk application is done in handle_perk_select_input to avoid timing issues
 pub fn handle_perk_selection(
     mut events: EventReader<PerkSelectedEvent>,
-    mut query: Query<(&mut PerkInventory, &mut PerkBonuses), With<Player>>,
-    mut next_state: ResMut<NextState<GameState>>,
+    query: Query<&PerkInventory, With<Player>>,
 ) {
     for event in events.read() {
-        if let Ok((mut inventory, mut bonuses)) = query.get_mut(event.player_entity) {
-            inventory.add_perk(event.perk_id);
-            *bonuses = PerkBonuses::calculate(&inventory);
+        // Just log - perk is already applied by handle_perk_select_input
+        if let Ok(inventory) = query.get(event.player_entity) {
+            info!(
+                "Perk {:?} selected, player now has {} perks",
+                event.perk_id,
+                inventory.total_perks()
+            );
         }
-
-        // Return to gameplay after selecting a perk
-        next_state.set(GameState::Playing);
     }
 }
 

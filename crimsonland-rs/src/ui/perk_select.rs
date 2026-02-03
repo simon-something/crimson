@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::perks::{PerkId, PerkInventory, PerkData, PerkRegistry, PerkSelectedEvent};
+use crate::perks::{PerkBonuses, PerkId, PerkInventory, PerkData, PerkRegistry, PerkSelectedEvent};
 use crate::player::Player;
 use crate::states::PlayingState;
 
@@ -202,7 +202,7 @@ pub fn cleanup_perk_select(
 pub fn handle_perk_select_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     selection_state: Option<Res<PerkSelectionState>>,
-    player_query: Query<Entity, With<Player>>,
+    mut player_query: Query<(Entity, &mut PerkInventory, &mut PerkBonuses), With<Player>>,
     button_query: Query<(&Interaction, &PerkButton), Changed<Interaction>>,
     mut perk_events: EventWriter<PerkSelectedEvent>,
     mut next_state: ResMut<NextState<PlayingState>>,
@@ -211,7 +211,7 @@ pub fn handle_perk_select_input(
         return;
     };
 
-    let Ok(player_entity) = player_query.get_single() else {
+    let Ok((player_entity, mut inventory, mut bonuses)) = player_query.get_single_mut() else {
         return;
     };
 
@@ -230,6 +230,11 @@ pub fn handle_perk_select_input(
 
     if let Some(index) = selected {
         if let Some(&perk_id) = selection_state.available_perks.get(index) {
+            // Apply perk directly to avoid event timing issues
+            inventory.add_perk(perk_id);
+            *bonuses = PerkBonuses::calculate(&inventory);
+            info!("Perk {:?} applied to player", perk_id);
+
             perk_events.send(PerkSelectedEvent {
                 player_entity,
                 perk_id,
@@ -243,6 +248,12 @@ pub fn handle_perk_select_input(
     for (interaction, button) in button_query.iter() {
         if *interaction == Interaction::Pressed {
             info!("Perk {} selected via mouse click", button.index + 1);
+
+            // Apply perk directly to avoid event timing issues
+            inventory.add_perk(button.perk_id);
+            *bonuses = PerkBonuses::calculate(&inventory);
+            info!("Perk {:?} applied to player", button.perk_id);
+
             perk_events.send(PerkSelectedEvent {
                 player_entity,
                 perk_id: button.perk_id,

@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::bonuses::{BonusType, SpawnBonusEvent};
-use crate::creatures::{CreatureRegistry, CreatureType, SpawnCreatureEvent};
+use crate::creatures::{CreatureDeathEvent, CreatureRegistry, CreatureType, SpawnCreatureEvent};
 use crate::player::components::{Experience, Player};
 use crate::quests::ActiveQuestBuilder;
 use crate::states::GameState;
@@ -26,6 +26,7 @@ impl Plugin for SurvivalPlugin {
                     spawn_survival_creatures,
                     trigger_survival_swarms,
                     spawn_survival_bonuses,
+                    track_survival_kills,
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing)),
@@ -321,6 +322,16 @@ fn trigger_survival_swarms(
             info!("Survival swarm completed");
             commands.remove_resource::<SurvivalSwarm>();
         }
+    }
+}
+
+/// Tracks kills in survival mode
+fn track_survival_kills(
+    mut survival: ResMut<SurvivalState>,
+    mut death_events: EventReader<CreatureDeathEvent>,
+) {
+    for _event in death_events.read() {
+        survival.kills += 1;
     }
 }
 
