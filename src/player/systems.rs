@@ -8,6 +8,7 @@ use super::components::*;
 use super::resources::*;
 use crate::bonuses::ActiveBonusEffects;
 use crate::creatures::CreatureDeathEvent;
+use crate::items::CarriedItem;
 use crate::perks::{PerkBonuses, PerkInventory};
 use crate::states::{GameState, PlayingState};
 use crate::weapons::EquippedWeapon;
@@ -73,6 +74,8 @@ pub fn spawn_player(mut commands: Commands, config: Res<PlayerConfig>) {
         PerkBonuses::default(),
         // Active bonus effects (from pickups)
         ActiveBonusEffects::default(),
+        // Carried item (space key powerup)
+        CarriedItem::new(),
     ));
 }
 
@@ -163,11 +166,7 @@ pub fn player_shooting(
         if keyboard.just_pressed(input_mapping.reload) && !weapon.is_reloading() {
             weapon.start_reload(2.0);
         }
-
-        // Handle use item input (currently just logs)
-        if keyboard.just_pressed(input_mapping.use_item) {
-            info!("Use item pressed");
-        }
+        // Item use is handled by the items system (handle_item_use)
     }
 }
 

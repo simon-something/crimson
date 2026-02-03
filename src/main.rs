@@ -9,6 +9,7 @@ mod audio;
 mod bonuses;
 mod creatures;
 mod effects;
+mod items;
 mod perks;
 mod player;
 mod quests;
@@ -38,6 +39,7 @@ fn main() {
         .add_plugins(weapons::WeaponsPlugin)
         .add_plugins(perks::PerksPlugin)
         .add_plugins(bonuses::BonusesPlugin)
+        .add_plugins(items::ItemsPlugin)
         .add_plugins(quests::QuestsPlugin)
         .add_plugins(effects::EffectsPlugin)
         .add_plugins(ui::UiPlugin)
