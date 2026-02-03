@@ -1,9 +1,11 @@
 //! Item systems
 
 use bevy::prelude::*;
+use rand::Rng;
 
 use super::components::*;
 use crate::creatures::{Creature, CreatureHealth};
+use crate::creatures::systems::CreatureDeathEvent;
 use crate::player::components::Player;
 use crate::player::resources::PlayerInputMapping;
 use crate::bonuses::ActiveBonusEffects;
@@ -156,12 +158,31 @@ pub fn apply_item_effects(
     }
 }
 
-/// Spawns item pickups periodically or from creature drops
-pub fn spawn_item_pickups(
-    // This would be called by survival/quest systems when needed
-    // For now, items spawn from specific events
+/// Spawns item pickups when creatures die (rare drops)
+pub fn spawn_item_on_death(
+    mut commands: Commands,
+    mut death_events: EventReader<CreatureDeathEvent>,
 ) {
-    // Item spawning is triggered by other systems (survival mode, quest rewards, etc.)
+    let mut rng = rand::thread_rng();
+    // Items are rarer than bonuses - 3% base chance
+    const BASE_DROP_CHANCE: f32 = 0.03;
+
+    for event in death_events.read() {
+        // Boss creatures have higher drop chance
+        let drop_chance = if event.experience >= 100 {
+            BASE_DROP_CHANCE * 5.0 // 15% for bosses
+        } else if event.experience >= 30 {
+            BASE_DROP_CHANCE * 2.0 // 6% for strong creatures
+        } else {
+            BASE_DROP_CHANCE
+        };
+
+        if rng.gen::<f32>() < drop_chance {
+            let item_type = ItemType::random();
+            spawn_item_at(&mut commands, item_type, event.position);
+            info!("Dropped item {:?} at {:?}", item_type, event.position);
+        }
+    }
 }
 
 /// Handles player collecting item pickups

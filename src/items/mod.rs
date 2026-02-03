@@ -25,7 +25,7 @@ impl Plugin for ItemsPlugin {
                 (
                     handle_item_use,
                     apply_item_effects,
-                    spawn_item_pickups,
+                    spawn_item_on_death,
                     collect_items,
                     update_item_lifetime,
                 )

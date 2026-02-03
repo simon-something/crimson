@@ -7,6 +7,7 @@ use super::{AudioSettings, PlaySoundEvent, SoundEffect};
 use crate::bonuses::systems::BonusCollectedEvent;
 use crate::bonuses::BonusType;
 use crate::creatures::systems::CreatureDeathEvent;
+use crate::items::{ItemPickedUpEvent, ItemUsedEvent};
 use crate::player::systems::{PlayerDamageEvent, PlayerDeathEvent, PlayerLevelUpEvent};
 use crate::weapons::components::WeaponId;
 use crate::weapons::systems::{FireWeaponEvent, ProjectileHitEvent};
@@ -84,6 +85,8 @@ pub fn play_sound_effects(
     mut weapon_fires: EventReader<FireWeaponEvent>,
     mut projectile_hits: EventReader<ProjectileHitEvent>,
     mut bonus_collected: EventReader<BonusCollectedEvent>,
+    mut item_pickups: EventReader<ItemPickedUpEvent>,
+    mut item_uses: EventReader<ItemUsedEvent>,
     mut sound_events: EventReader<PlaySoundEvent>,
 ) {
     // Process weapon fire events with positional audio
@@ -137,6 +140,24 @@ pub fn play_sound_effects(
     for event in bonus_collected.read() {
         let sound = bonus_pickup_sound(event.bonus_type);
         play_sfx(&audio, &settings, &asset_server, sound);
+    }
+
+    // Process item pickups
+    for _event in item_pickups.read() {
+        play_sfx(&audio, &settings, &asset_server, SoundEffect::ItemPickup);
+    }
+
+    // Process item uses
+    for event in item_uses.read() {
+        // Big items get explosion sound, others get item use sound
+        let sound = match event.item_type {
+            crate::items::ItemType::Nuke | crate::items::ItemType::PlasmaBlast |
+            crate::items::ItemType::MissileSalvo | crate::items::ItemType::Shockwave => {
+                SoundEffect::Explosion
+            }
+            _ => SoundEffect::ItemUse,
+        };
+        play_sfx_at(&audio, &settings, &asset_server, sound, Some(event.position.truncate()));
     }
 
     // Process direct sound effect events with positional audio
@@ -203,6 +224,8 @@ fn play_sfx_at(
         SoundEffect::HealthPickup => "audio/health.ogg",
         SoundEffect::WeaponPickup => "audio/weapon.ogg",
         SoundEffect::BonusPickup => "audio/bonus.ogg",
+        SoundEffect::ItemPickup => "audio/item_pickup.ogg",
+        SoundEffect::ItemUse => "audio/item_use.ogg",
         SoundEffect::MenuSelect => "audio/menu_select.ogg",
         SoundEffect::MenuBack => "audio/menu_back.ogg",
     };

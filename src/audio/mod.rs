@@ -94,6 +94,8 @@ pub enum SoundEffect {
     HealthPickup,
     WeaponPickup,
     BonusPickup,
+    ItemPickup,
+    ItemUse,
 
     // UI
     MenuSelect,

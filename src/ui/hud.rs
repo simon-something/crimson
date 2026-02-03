@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 
 use crate::creatures::{Creature, CreatureHealth};
+use crate::items::CarriedItem;
 use crate::perks::PerkInventory;
 use crate::player::{Experience, Health, Invincibility, Player};
 use crate::quests::{ActiveQuest, QuestProgress};
@@ -57,6 +58,10 @@ pub struct PerkCountText;
 /// Marker for invincibility indicator
 #[derive(Component)]
 pub struct InvincibilityIndicator;
+
+/// Marker for carried item display
+#[derive(Component)]
+pub struct CarriedItemText;
 
 /// Marker for creature health bar (world-space sprite)
 #[derive(Component)]
@@ -319,18 +324,31 @@ pub fn setup_hud(mut commands: Commands) {
                             ));
                         });
 
-                    // Right side: perk count and power-up indicators
+                    // Right side: carried item, perk count and power-up indicators
                     parent
                         .spawn(NodeBundle {
                             style: Style {
                                 flex_direction: FlexDirection::Row,
                                 align_items: AlignItems::Center,
-                                column_gap: Val::Px(10.0),
+                                column_gap: Val::Px(15.0),
                                 ..default()
                             },
                             ..default()
                         })
                         .with_children(|parent| {
+                            // Carried item display
+                            parent.spawn((
+                                CarriedItemText,
+                                TextBundle::from_section(
+                                    "",
+                                    TextStyle {
+                                        font_size: 18.0,
+                                        color: Color::srgb(1.0, 0.8, 0.2),
+                                        ..default()
+                                    },
+                                ),
+                            ));
+
                             // Invincibility indicator (hidden by default)
                             parent.spawn((
                                 InvincibilityIndicator,
@@ -453,17 +471,21 @@ pub fn update_hud(
     }
 }
 
-/// Updates perk count and invincibility indicator
+/// Updates perk count, invincibility indicator, and carried item
 #[allow(clippy::type_complexity)]
 pub fn update_hud_perks(
-    player_query: Query<(&PerkInventory, Option<&Invincibility>), With<Player>>,
+    player_query: Query<(&PerkInventory, Option<&Invincibility>, &CarriedItem), With<Player>>,
     mut perk_text_query: Query<&mut Text, With<PerkCountText>>,
     mut invincibility_text_query: Query<
         &mut Text,
-        (With<InvincibilityIndicator>, Without<PerkCountText>),
+        (With<InvincibilityIndicator>, Without<PerkCountText>, Without<CarriedItemText>),
+    >,
+    mut carried_item_text_query: Query<
+        &mut Text,
+        (With<CarriedItemText>, Without<PerkCountText>, Without<InvincibilityIndicator>),
     >,
 ) {
-    let Ok((perk_inventory, invincibility)) = player_query.get_single() else {
+    let Ok((perk_inventory, invincibility, carried_item)) = player_query.get_single() else {
         return;
     };
 
@@ -480,6 +502,16 @@ pub fn update_hud_perks(
             } else {
                 text.sections[0].value.clear();
             }
+        } else {
+            text.sections[0].value.clear();
+        }
+    }
+
+    // Update carried item display
+    if let Ok(mut text) = carried_item_text_query.get_single_mut() {
+        if let Some(item_type) = carried_item.item {
+            text.sections[0].value = format!("[SPACE] {}", item_type.name());
+            text.sections[0].style.color = item_type.color();
         } else {
             text.sections[0].value.clear();
         }

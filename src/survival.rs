@@ -8,6 +8,7 @@ use rand::Rng;
 
 use crate::bonuses::{BonusType, SpawnBonusEvent};
 use crate::creatures::{CreatureDeathEvent, CreatureRegistry, CreatureType, SpawnCreatureEvent};
+use crate::items::{ItemType, spawn_item_at};
 use crate::player::components::{Experience, Player};
 use crate::quests::ActiveQuestBuilder;
 use crate::states::GameState;
@@ -26,6 +27,7 @@ impl Plugin for SurvivalPlugin {
                     spawn_survival_creatures,
                     trigger_survival_swarms,
                     spawn_survival_bonuses,
+                    spawn_survival_items,
                     track_survival_kills,
                 )
                     .chain()
@@ -43,6 +45,8 @@ pub struct SurvivalState {
     pub spawn_timer: f32,
     /// Time since last weapon drop
     pub weapon_drop_timer: f32,
+    /// Time since last item drop
+    pub item_drop_timer: f32,
     /// Time since last swarm event
     pub swarm_timer: f32,
     /// Base spawn interval (decreases over time)
@@ -61,6 +65,7 @@ impl Default for SurvivalState {
             game_time: 0.0,
             spawn_timer: 0.0,
             weapon_drop_timer: 0.0,
+            item_drop_timer: 0.0,
             swarm_timer: 0.0,
             base_spawn_interval: 2.0, // Start with 2 seconds between spawns
             difficulty: 1.0,
@@ -196,6 +201,7 @@ fn update_survival_mode(
     survival.game_time += time.delta_seconds();
     survival.spawn_timer += time.delta_seconds();
     survival.weapon_drop_timer += time.delta_seconds();
+    survival.item_drop_timer += time.delta_seconds();
     survival.swarm_timer += time.delta_seconds();
 
     // Update total exp from player
@@ -359,6 +365,33 @@ fn spawn_survival_bonuses(
                 bonus_type: BonusType::WeaponPickup,
                 position,
             });
+        }
+    }
+}
+
+/// Spawns item pickups periodically (rarer than weapons)
+fn spawn_survival_items(
+    mut commands: Commands,
+    mut survival: ResMut<SurvivalState>,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    const ITEM_DROP_INTERVAL: f32 = 60.0; // Every minute
+
+    if survival.item_drop_timer >= ITEM_DROP_INTERVAL {
+        survival.item_drop_timer = 0.0;
+
+        // Spawn item near player
+        if let Ok(player_transform) = player_query.get_single() {
+            let mut rng = rand::thread_rng();
+            let offset = Vec2::new(
+                rng.gen_range(-150.0..150.0),
+                rng.gen_range(-150.0..150.0),
+            );
+            let position = player_transform.translation + Vec3::new(offset.x, offset.y, 0.0);
+
+            let item_type = ItemType::random();
+            spawn_item_at(&mut commands, item_type, position);
+            info!("Survival: Spawned {:?} item pickup", item_type);
         }
     }
 }
