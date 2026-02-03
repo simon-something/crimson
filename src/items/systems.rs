@@ -167,13 +167,13 @@ pub fn spawn_item_pickups(
 /// Handles player collecting item pickups
 pub fn collect_items(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform, &mut CarriedItem), With<Player>>,
+    mut player_query: Query<(Entity, &Transform, &mut CarriedItem), With<Player>>,
     pickup_query: Query<(Entity, &Transform, &ItemPickup)>,
     mut pickup_events: EventWriter<ItemPickedUpEvent>,
 ) {
     const PICKUP_RADIUS: f32 = 30.0;
 
-    for (player_entity, player_transform, mut carried) in player_query.iter() {
+    for (player_entity, player_transform, mut carried) in player_query.iter_mut() {
         let player_pos = player_transform.translation.truncate();
 
         for (pickup_entity, pickup_transform, pickup) in pickup_query.iter() {

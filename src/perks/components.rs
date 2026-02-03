@@ -201,10 +201,16 @@ impl PerkId {
 }
 
 /// Component storing the player's acquired perks
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone)]
 pub struct PerkInventory {
     /// Count of each perk type (some perks stack)
     counts: [u8; 64],
+}
+
+impl Default for PerkInventory {
+    fn default() -> Self {
+        Self { counts: [0; 64] }
+    }
 }
 
 impl PerkInventory {
@@ -269,10 +275,20 @@ pub struct PerkBonuses {
     // === Accuracy & Fire Rate ===
     /// Spread multiplier (Sharpshooter: tighter)
     pub spread_multiplier: f32,
+    /// Accuracy bonus (0.0-1.0, reduces spread)
+    pub accuracy_bonus: f32,
     /// Fire rate multiplier (Fastshot: 0.88 cooldown)
     pub fire_rate_multiplier: f32,
+    /// Critical hit chance (Highlander uses instant_kill instead)
+    pub crit_chance: f32,
+    /// Critical hit damage multiplier
+    pub crit_multiplier: f32,
+    /// Projectile range/lifetime multiplier
+    pub range_multiplier: f32,
 
     // === Ammo & Reload ===
+    /// Ammo pickup multiplier
+    pub ammo_multiplier: f32,
     /// Clip size bonus (AmmoManiac: +25%)
     pub clip_size_multiplier: f32,
     /// Fixed clip bonus (MyFavouriteWeapon: +2)
@@ -293,6 +309,8 @@ pub struct PerkBonuses {
     pub max_health_multiplier: f32,
     /// Damage taken multiplier (ThickSkinned: 2/3)
     pub damage_taken_multiplier: f32,
+    /// Damage reduction (0.0-1.0, derived from damage_taken_multiplier)
+    pub damage_reduction: f32,
     /// Damage taken during reload (ToughReloader: 0.5)
     pub reload_damage_multiplier: f32,
     /// Dodge chance (Dodger: 20%, Ninja: 33%)
@@ -373,7 +391,12 @@ impl Default for PerkBonuses {
             instant_kill_chance: 0.0,
             projectile_speed_multiplier: 1.0,
             spread_multiplier: 1.0,
+            accuracy_bonus: 0.0,
             fire_rate_multiplier: 1.0,
+            crit_chance: 0.0,
+            crit_multiplier: 2.0,
+            range_multiplier: 1.0,
+            ammo_multiplier: 1.0,
             clip_size_multiplier: 1.0,
             clip_size_bonus: 0,
             reload_speed_multiplier: 1.0,
@@ -383,6 +406,7 @@ impl Default for PerkBonuses {
             anxious_loader: false,
             max_health_multiplier: 1.0,
             damage_taken_multiplier: 1.0,
+            damage_reduction: 0.0,
             reload_damage_multiplier: 1.0,
             dodge_chance: 0.0,
             regen_per_second: 0.0,
@@ -470,10 +494,15 @@ impl PerkBonuses {
         // Sharpshooter: tighter spread (multiply by 0.5), slower firing handled elsewhere
         if inventory.has_perk(PerkId::Sharpshooter) {
             bonuses.spread_multiplier = 0.5;
+            bonuses.accuracy_bonus = 0.5; // Derived: 1 - spread_multiplier
         }
         // Fastshot: cooldown * 0.88 (fire rate / 0.88 = faster)
         if inventory.has_perk(PerkId::Fastshot) {
             bonuses.fire_rate_multiplier = 1.0 / 0.88; // ~1.136x faster
+        }
+        // BarrelGreaser also improves range
+        if inventory.has_perk(PerkId::BarrelGreaser) {
+            bonuses.range_multiplier = 1.3;
         }
 
         // === Ammo & Reload ===
@@ -506,6 +535,7 @@ impl PerkBonuses {
         if inventory.has_perk(PerkId::ThickSkinned) {
             bonuses.max_health_multiplier = 2.0 / 3.0;
             bonuses.damage_taken_multiplier = 2.0 / 3.0;
+            bonuses.damage_reduction = 1.0 / 3.0; // Derived: 1 - damage_taken_multiplier
         }
         // ToughReloader: 0.5x damage during reload
         if inventory.has_perk(PerkId::ToughReloader) {

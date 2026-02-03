@@ -67,9 +67,9 @@ impl Default for RushLoadout {
         Self {
             weapon: WeaponId::AssaultRifle,
             perks: vec![
-                PerkId::TriggerHappy,
-                PerkId::DeadlyAccuracy,
-                PerkId::LongBarrel,
+                PerkId::Fastshot,
+                PerkId::Sharpshooter,
+                PerkId::BarrelGreaser,
             ],
             name: "Assault".to_string(),
         }
@@ -82,27 +82,27 @@ pub fn available_loadouts() -> Vec<RushLoadout> {
         RushLoadout {
             weapon: WeaponId::AssaultRifle,
             perks: vec![
-                PerkId::TriggerHappy,
-                PerkId::DeadlyAccuracy,
-                PerkId::LongBarrel,
+                PerkId::Fastshot,
+                PerkId::Sharpshooter,
+                PerkId::BarrelGreaser,
             ],
             name: "Assault".to_string(),
         },
         RushLoadout {
             weapon: WeaponId::Shotgun,
             perks: vec![
-                PerkId::FastReload,
-                PerkId::DeadlyAccuracy,
-                PerkId::ThickSkin,
+                PerkId::Fastloader,
+                PerkId::Sharpshooter,
+                PerkId::ThickSkinned,
             ],
             name: "Shotgunner".to_string(),
         },
         RushLoadout {
             weapon: WeaponId::Minigun,
             perks: vec![
-                PerkId::TriggerHappy,
-                PerkId::LongBarrel,
-                PerkId::ThickSkin,
+                PerkId::Fastshot,
+                PerkId::BarrelGreaser,
+                PerkId::ThickSkinned,
             ],
             name: "Heavy".to_string(),
         },
@@ -110,17 +110,17 @@ pub fn available_loadouts() -> Vec<RushLoadout> {
             weapon: WeaponId::RocketLauncher,
             perks: vec![
                 PerkId::Pyromaniac,
-                PerkId::FastReload,
-                PerkId::ThickSkin,
+                PerkId::Fastloader,
+                PerkId::ThickSkinned,
             ],
             name: "Demolition".to_string(),
         },
         RushLoadout {
             weapon: WeaponId::PlasmaRifle,
             perks: vec![
-                PerkId::TriggerHappy,
-                PerkId::DeadlyAccuracy,
-                PerkId::CriticalHit,
+                PerkId::Fastshot,
+                PerkId::Sharpshooter,
+                PerkId::Highlander,
             ],
             name: "Plasma".to_string(),
         },
