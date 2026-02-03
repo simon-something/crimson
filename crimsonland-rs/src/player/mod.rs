@@ -6,7 +6,6 @@ pub mod components;
 pub mod resources;
 pub mod systems;
 
-#[allow(unused_imports)]
 pub use components::*;
 pub use resources::*;
 pub use systems::*;
@@ -21,6 +20,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerConfig>()
+            .init_resource::<PlayerInputMapping>()
             .add_event::<PlayerDamageEvent>()
             .add_event::<PlayerDeathEvent>()
             .add_event::<PlayerLevelUpEvent>()

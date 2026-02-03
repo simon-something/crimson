@@ -2,13 +2,13 @@
 
 use bevy::prelude::*;
 
-use crate::creatures::components::{Creature, CreatureHealth};
-use crate::perks::components::PerkInventory;
-use crate::player::components::{Experience, Health, Invincibility, Player};
-use crate::quests::systems::{ActiveQuest, QuestProgress};
+use crate::creatures::{Creature, CreatureHealth};
+use crate::perks::PerkInventory;
+use crate::player::{Experience, Health, Invincibility, Player};
+use crate::quests::{ActiveQuest, QuestProgress};
 use crate::rush::RushState;
 use crate::survival::SurvivalState;
-use crate::weapons::components::EquippedWeapon;
+use crate::weapons::EquippedWeapon;
 
 /// Marker for HUD root
 #[derive(Component)]

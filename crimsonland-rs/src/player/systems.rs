@@ -6,11 +6,11 @@ use rand::Rng;
 
 use super::components::*;
 use super::resources::*;
-use crate::bonuses::components::ActiveBonusEffects;
-use crate::creatures::systems::CreatureDeathEvent;
-use crate::perks::components::{PerkBonuses, PerkInventory};
+use crate::bonuses::ActiveBonusEffects;
+use crate::creatures::CreatureDeathEvent;
+use crate::perks::{PerkBonuses, PerkInventory};
 use crate::states::GameState;
-use crate::weapons::components::EquippedWeapon;
+use crate::weapons::EquippedWeapon;
 
 /// Event fired when a player takes damage
 #[derive(Event)]
@@ -86,22 +86,24 @@ pub fn despawn_players(mut commands: Commands, query: Query<Entity, With<Player>
 /// Handles player movement input
 pub fn player_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
+    input_mapping: Res<PlayerInputMapping>,
     time: Res<Time>,
     mut query: Query<(&mut Transform, &MoveSpeed), With<Player>>,
 ) {
     for (mut transform, speed) in query.iter_mut() {
         let mut direction = Vec2::ZERO;
 
-        if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        // Use input mapping for customizable keybindings, with arrow key fallbacks
+        if keyboard.pressed(input_mapping.move_up) || keyboard.pressed(KeyCode::ArrowUp) {
             direction.y += 1.0;
         }
-        if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
+        if keyboard.pressed(input_mapping.move_down) || keyboard.pressed(KeyCode::ArrowDown) {
             direction.y -= 1.0;
         }
-        if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
+        if keyboard.pressed(input_mapping.move_left) || keyboard.pressed(KeyCode::ArrowLeft) {
             direction.x -= 1.0;
         }
-        if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
+        if keyboard.pressed(input_mapping.move_right) || keyboard.pressed(KeyCode::ArrowRight) {
             direction.x += 1.0;
         }
 
@@ -147,12 +149,25 @@ pub fn player_aim(
 /// Handles player shooting input
 pub fn player_shooting(
     mouse: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    input_mapping: Res<PlayerInputMapping>,
     time: Res<Time>,
-    mut query: Query<&mut Firing, With<Player>>,
+    mut query: Query<(&mut Firing, &mut EquippedWeapon), With<Player>>,
 ) {
-    for mut firing in query.iter_mut() {
-        firing.is_firing = mouse.pressed(MouseButton::Left);
+    for (mut firing, mut weapon) in query.iter_mut() {
+        // Use configurable fire button
+        firing.is_firing = mouse.pressed(input_mapping.fire);
         firing.cooldown_timer = (firing.cooldown_timer - time.delta_seconds()).max(0.0);
+
+        // Handle reload input (2 second base reload time)
+        if keyboard.just_pressed(input_mapping.reload) && !weapon.is_reloading() {
+            weapon.start_reload(2.0);
+        }
+
+        // Handle use item input (currently just logs)
+        if keyboard.just_pressed(input_mapping.use_item) {
+            info!("Use item pressed");
+        }
     }
 }
 

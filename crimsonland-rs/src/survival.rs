@@ -9,6 +9,7 @@ use rand::Rng;
 use crate::bonuses::{BonusType, SpawnBonusEvent};
 use crate::creatures::{CreatureRegistry, CreatureType, SpawnCreatureEvent};
 use crate::player::components::{Experience, Player};
+use crate::quests::ActiveQuestBuilder;
 use crate::states::GameState;
 
 /// Plugin for survival mode functionality
@@ -23,6 +24,7 @@ impl Plugin for SurvivalPlugin {
                 (
                     update_survival_mode,
                     spawn_survival_creatures,
+                    trigger_survival_swarms,
                     spawn_survival_bonuses,
                 )
                     .chain()
@@ -40,6 +42,8 @@ pub struct SurvivalState {
     pub spawn_timer: f32,
     /// Time since last weapon drop
     pub weapon_drop_timer: f32,
+    /// Time since last swarm event
+    pub swarm_timer: f32,
     /// Base spawn interval (decreases over time)
     pub base_spawn_interval: f32,
     /// Current difficulty multiplier
@@ -56,12 +60,19 @@ impl Default for SurvivalState {
             game_time: 0.0,
             spawn_timer: 0.0,
             weapon_drop_timer: 0.0,
+            swarm_timer: 0.0,
             base_spawn_interval: 2.0, // Start with 2 seconds between spawns
             difficulty: 1.0,
             total_exp: 0,
             kills: 0,
         }
     }
+}
+
+/// Active swarm builder for survival mode
+#[derive(Resource)]
+pub struct SurvivalSwarm {
+    pub builder: ActiveQuestBuilder,
 }
 
 impl SurvivalState {
@@ -184,6 +195,7 @@ fn update_survival_mode(
     survival.game_time += time.delta_seconds();
     survival.spawn_timer += time.delta_seconds();
     survival.weapon_drop_timer += time.delta_seconds();
+    survival.swarm_timer += time.delta_seconds();
 
     // Update total exp from player
     if let Ok(exp) = player_query.get_single() {
@@ -225,6 +237,89 @@ fn spawn_survival_creatures(
                 creature_type,
                 position: None, // Let spawner pick position
             });
+        }
+    }
+}
+
+/// Triggers periodic swarm events using the quest builder system
+fn trigger_survival_swarms(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut survival: ResMut<SurvivalState>,
+    mut swarm: Option<ResMut<SurvivalSwarm>>,
+    mut spawn_events: EventWriter<SpawnCreatureEvent>,
+) {
+    const SWARM_INTERVAL: f32 = 60.0; // Swarm every minute
+
+    // Check if we should trigger a new swarm
+    if swarm.is_none() && survival.swarm_timer >= SWARM_INTERVAL && survival.game_time > 30.0 {
+        survival.swarm_timer = 0.0;
+
+        // Choose swarm type based on game time and difficulty
+        let creature = survival.pick_creature();
+        let mut rng = rand::thread_rng();
+
+        let builder = if survival.game_time > 180.0 && rng.gen_bool(0.3) {
+            // Boss wave after 3 minutes (30% chance)
+            let boss = match rng.gen_range(0..3) {
+                0 => CreatureType::BossSpider,
+                1 => CreatureType::BossAlien,
+                _ => CreatureType::BossNest,
+            };
+            let minion_count = (5 + survival.difficulty as u32).min(12);
+            info!("Survival BOSS wave triggered: {:?} with {} minions", boss, minion_count);
+            ActiveQuestBuilder::boss_wave(creature, minion_count, boss)
+        } else if survival.game_time > 90.0 && rng.gen_bool(0.5) {
+            // Timed wave after 1.5 minutes (50% chance)
+            let wave_size = (8 + survival.difficulty as u32 * 2).min(20);
+            let creatures: Vec<_> = std::iter::repeat_n(creature, wave_size as usize).collect();
+            info!("Survival timed wave triggered: {} {:?}", wave_size, creature);
+            ActiveQuestBuilder::timed_wave(creatures, 0.3)
+        } else {
+            // Regular swarm
+            let bursts = (2 + survival.difficulty as u32).min(5);
+            let per_burst = (3 + survival.difficulty as u32).min(8);
+            info!(
+                "Survival swarm triggered: {:?} x{} bursts of {}",
+                creature, bursts, per_burst
+            );
+            ActiveQuestBuilder::swarm(creature, bursts, per_burst)
+        };
+
+        commands.insert_resource(SurvivalSwarm { builder });
+    }
+
+    // Update active swarm
+    if let Some(ref mut swarm) = swarm {
+        let cmds = swarm.builder.builder.update(time.delta_seconds());
+
+        for cmd in cmds {
+            // Use position-based spawning for swarms (spawn around edges)
+            let pos = if cmd.position.is_some() {
+                cmd.position
+            } else {
+                // Random edge position
+                let mut rng = rand::thread_rng();
+                let edge = rng.gen_range(0..4);
+                let pos = match edge {
+                    0 => Vec3::new(rng.gen_range(-600.0..600.0), 400.0, 0.0),  // Top
+                    1 => Vec3::new(rng.gen_range(-600.0..600.0), -400.0, 0.0), // Bottom
+                    2 => Vec3::new(-600.0, rng.gen_range(-400.0..400.0), 0.0), // Left
+                    _ => Vec3::new(600.0, rng.gen_range(-400.0..400.0), 0.0),  // Right
+                };
+                Some(pos)
+            };
+
+            spawn_events.send(SpawnCreatureEvent {
+                creature_type: cmd.creature_type,
+                position: pos,
+            });
+        }
+
+        // Remove swarm when complete
+        if swarm.builder.builder.is_complete() {
+            info!("Survival swarm completed");
+            commands.remove_resource::<SurvivalSwarm>();
         }
     }
 }

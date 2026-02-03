@@ -30,8 +30,7 @@ impl Default for PlayerConfig {
     }
 }
 
-/// Input mapping for player controls (scaffolding for customizable keybindings)
-#[allow(dead_code)]
+/// Input mapping for player controls (customizable keybindings)
 #[derive(Resource, Debug, Clone)]
 pub struct PlayerInputMapping {
     pub move_up: KeyCode,

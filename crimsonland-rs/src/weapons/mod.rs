@@ -6,7 +6,6 @@ pub mod components;
 pub mod registry;
 pub mod systems;
 
-#[allow(unused_imports)]
 pub use components::*;
 pub use registry::*;
 pub use systems::*;

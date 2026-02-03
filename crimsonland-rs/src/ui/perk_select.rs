@@ -2,10 +2,8 @@
 
 use bevy::prelude::*;
 
-use crate::perks::components::{PerkId, PerkInventory};
-use crate::perks::registry::{PerkData, PerkRegistry};
-use crate::perks::systems::PerkSelectedEvent;
-use crate::player::components::Player;
+use crate::perks::{PerkId, PerkInventory, PerkData, PerkRegistry, PerkSelectedEvent};
+use crate::player::Player;
 use crate::states::GameState;
 
 /// Gets perks the player already has for display

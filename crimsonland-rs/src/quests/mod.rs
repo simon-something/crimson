@@ -21,6 +21,7 @@ impl Plugin for QuestsPlugin {
         app.init_resource::<QuestDatabase>()
             .init_resource::<ActiveQuest>()
             .init_resource::<QuestProgress>()
+            .init_resource::<DelayedSpawns>()
             .add_event::<QuestCompletedEvent>()
             .add_event::<WaveCompletedEvent>()
             .add_systems(
@@ -33,6 +34,7 @@ impl Plugin for QuestsPlugin {
                 (
                     update_quest_progress,
                     spawn_wave_creatures,
+                    update_quest_builder,
                     track_quest_kills,
                     check_wave_completion,
                     check_quest_completion,

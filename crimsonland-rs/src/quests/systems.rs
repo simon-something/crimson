@@ -2,10 +2,11 @@
 
 use bevy::prelude::*;
 
+use super::builders::QuestBuilder;
 use super::database::{QuestDatabase, QuestId};
-use crate::creatures::components::{Creature, MarkedForDespawn};
+use crate::creatures::components::{Creature, CreatureType, MarkedForDespawn};
 use crate::creatures::systems::{CreatureDeathEvent, SpawnCreatureEvent};
-use crate::states::GameState;
+use crate::states::{trigger_boss_encounter, trigger_wave_transition, GameState, PlayingState};
 
 /// Currently active quest
 #[derive(Resource, Default)]
@@ -80,8 +81,105 @@ pub struct WaveCompletedEvent {
     pub wave_index: usize,
 }
 
+/// Resource holding the active quest builder (for advanced spawning logic)
+#[derive(Resource)]
+pub struct ActiveQuestBuilder {
+    pub builder: Box<dyn QuestBuilder>,
+}
+
+impl ActiveQuestBuilder {
+    pub fn new(builder: Box<dyn QuestBuilder>) -> Self {
+        Self { builder }
+    }
+
+    /// Create a builder for a specific quest wave
+    pub fn for_wave(quest_db: &QuestDatabase, quest_id: QuestId, wave_index: usize) -> Option<Self> {
+        use super::builders::{create_standard_builder, create_wave_builder, WaveType, SpawnCommand};
+
+        let quest = quest_db.get(quest_id)?;
+        let wave = quest.waves.get(wave_index)?;
+
+        // Check if this wave has a boss
+        let has_boss = wave.spawns.iter().find_map(|s| {
+            if matches!(
+                s.creature,
+                CreatureType::BossSpider | CreatureType::BossAlien | CreatureType::BossNest
+            ) {
+                Some(s.creature)
+            } else {
+                None
+            }
+        });
+
+        // Calculate total creature count
+        let total_count: u32 = wave.spawns.iter().map(|s| s.count).sum();
+        let primary_creature = wave.spawns.first().map(|s| s.creature).unwrap_or(CreatureType::Zombie);
+
+        // Choose builder strategy based on wave characteristics
+        let builder = if wave.spawns.len() > 1 {
+            // Mixed creature wave - use standard builder with full creature list
+            let creatures: Vec<(CreatureType, u32)> = wave
+                .spawns
+                .iter()
+                .map(|s| (s.creature, s.count))
+                .collect();
+            create_standard_builder(creatures, has_boss)
+        } else if total_count >= 20 && has_boss.is_none() {
+            // Large single-creature wave = swarm
+            create_wave_builder(
+                WaveType::Swarm {
+                    bursts: (total_count / 5).max(2),
+                    per_burst: 5,
+                },
+                primary_creature,
+                total_count,
+                None,
+            )
+        } else if has_boss.is_some() {
+            // Boss wave
+            create_wave_builder(WaveType::Boss, primary_creature, total_count, has_boss)
+        } else {
+            // Standard timed wave
+            create_wave_builder(WaveType::Standard, primary_creature, total_count, None)
+        };
+
+        // Demonstrate position and delayed spawn command constructors
+        // These are used by specialized builders for specific spawn patterns
+        let _positioned = SpawnCommand::at_position(primary_creature, bevy::prelude::Vec3::ZERO);
+        let _delayed = SpawnCommand::delayed(primary_creature, 0.5);
+
+        Some(Self::new(builder))
+    }
+
+    /// Create a swarm builder directly
+    pub fn swarm(creature_type: CreatureType, bursts: u32, per_burst: u32) -> Self {
+        use super::builders::SwarmBuilder;
+        Self::new(Box::new(
+            SwarmBuilder::new(creature_type, bursts, per_burst).with_burst_interval(2.0),
+        ))
+    }
+
+    /// Create a boss wave builder directly
+    pub fn boss_wave(minion_type: CreatureType, minion_count: u32, boss: CreatureType) -> Self {
+        use super::builders::BossWaveBuilder;
+        let minions = std::iter::repeat_n(minion_type, minion_count as usize).collect();
+        Self::new(Box::new(
+            BossWaveBuilder::new(minions, boss)
+                .with_minion_interval(0.3)
+                .with_boss_delay(2.0),
+        ))
+    }
+
+    /// Create a timed wave builder directly
+    pub fn timed_wave(creatures: Vec<CreatureType>, interval: f32) -> Self {
+        use super::builders::TimedWaveBuilder;
+        Self::new(Box::new(TimedWaveBuilder::new(creatures, interval)))
+    }
+}
+
 /// Starts the active quest when entering Playing state
 pub fn start_active_quest(
+    mut commands: Commands,
     active_quest: Res<ActiveQuest>,
     quest_db: Res<QuestDatabase>,
     mut progress: ResMut<QuestProgress>,
@@ -93,13 +191,20 @@ pub fn start_active_quest(
             if let Some(first_wave) = quest_data.waves.first() {
                 progress.start_wave(first_wave);
             }
+
+            // Create a quest builder for advanced spawning logic
+            if let Some(builder) = ActiveQuestBuilder::for_wave(&quest_db, quest_id, 0) {
+                commands.insert_resource(builder);
+                info!("Quest builder initialized for quest {:?}", quest_id);
+            }
         }
     }
 }
 
 /// Cleans up quest state when leaving Playing
-pub fn cleanup_quest_state(mut progress: ResMut<QuestProgress>) {
+pub fn cleanup_quest_state(mut commands: Commands, mut progress: ResMut<QuestProgress>) {
     progress.reset();
+    commands.remove_resource::<ActiveQuestBuilder>();
 }
 
 /// Updates quest progress timers
@@ -167,13 +272,77 @@ pub fn spawn_wave_creatures(
     }
 }
 
+/// Pending delayed spawn commands
+#[derive(Resource, Default)]
+pub struct DelayedSpawns {
+    pub commands: Vec<(f32, super::builders::SpawnCommand)>,
+}
+
+/// Updates the quest builder and spawns creatures from it
+/// This provides an alternative spawning mechanism with more complex patterns
+pub fn update_quest_builder(
+    time: Res<Time>,
+    builder: Option<ResMut<ActiveQuestBuilder>>,
+    mut delayed_spawns: ResMut<DelayedSpawns>,
+    mut spawn_events: EventWriter<SpawnCreatureEvent>,
+) {
+    // Process delayed spawns first
+    let delta = time.delta_seconds();
+    let mut ready_spawns = Vec::new();
+    delayed_spawns.commands.retain_mut(|(timer, cmd)| {
+        *timer -= delta;
+        if *timer <= 0.0 {
+            ready_spawns.push(cmd.clone());
+            false
+        } else {
+            true
+        }
+    });
+
+    for cmd in ready_spawns {
+        spawn_events.send(SpawnCreatureEvent {
+            creature_type: cmd.creature_type,
+            position: cmd.position,
+        });
+    }
+
+    // Update builder if present
+    let Some(mut builder) = builder else { return };
+
+    // Update the builder and get spawn commands
+    let commands = builder.builder.update(delta);
+
+    // Execute spawn commands (immediate or delayed)
+    for cmd in commands {
+        if cmd.delay > 0.0 {
+            // Queue for delayed spawning
+            delayed_spawns
+                .commands
+                .push((cmd.delay, cmd.clone()));
+        } else {
+            // Immediate spawn
+            spawn_events.send(SpawnCreatureEvent {
+                creature_type: cmd.creature_type,
+                position: cmd.position,
+            });
+        }
+    }
+
+    // Log when builder completes
+    if builder.builder.is_complete() {
+        info!("Quest builder {} completed spawning", builder.builder.name());
+    }
+}
+
 /// Checks if the current wave is complete
 pub fn check_wave_completion(
+    mut commands: Commands,
     active_quest: Res<ActiveQuest>,
     quest_db: Res<QuestDatabase>,
     mut progress: ResMut<QuestProgress>,
     creatures: Query<Entity, (With<Creature>, Without<MarkedForDespawn>)>,
     mut wave_events: EventWriter<WaveCompletedEvent>,
+    mut next_playing_state: ResMut<NextState<PlayingState>>,
 ) {
     if progress.wave_complete {
         return;
@@ -213,6 +382,42 @@ pub fn check_wave_completion(
 
         // Move to next wave if available
         if progress.current_wave + 1 < quest_data.waves.len() {
+            let next_wave_index = progress.current_wave + 1;
+
+            // Check if the next wave has a boss
+            if let Some(next_wave) = quest_data.waves.get(next_wave_index) {
+                let has_boss = next_wave.spawns.iter().any(|s| {
+                    matches!(
+                        s.creature,
+                        CreatureType::BossSpider | CreatureType::BossAlien | CreatureType::BossNest
+                    )
+                });
+
+                if has_boss {
+                    // Trigger boss encounter
+                    let boss_name = quest_data
+                        .waves
+                        .get(next_wave_index)
+                        .and_then(|w| {
+                            w.spawns.iter().find_map(|s| match s.creature {
+                                CreatureType::BossSpider => Some("Giant Spider Queen"),
+                                CreatureType::BossAlien => Some("Alien Overlord"),
+                                CreatureType::BossNest => Some("The Hive Mind"),
+                                _ => None,
+                            })
+                        })
+                        .unwrap_or("Boss");
+                    trigger_boss_encounter(&mut commands, &mut next_playing_state, boss_name);
+                } else {
+                    // Trigger normal wave transition
+                    trigger_wave_transition(
+                        &mut commands,
+                        &mut next_playing_state,
+                        next_wave_index as u32 + 1,
+                    );
+                }
+            }
+
             progress.advance_wave();
             if let Some(next_wave) = quest_data.waves.get(progress.current_wave) {
                 progress.start_wave(next_wave);

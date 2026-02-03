@@ -49,8 +49,6 @@ pub enum ScoreSource {
     Kill(CreatureType),
     /// Bonus for remaining time
     TimeBonus,
-    /// Bonus for kill combo streaks
-    ComboBonus,
 }
 
 /// Rush mode loadout configuration
@@ -358,12 +356,8 @@ fn spawn_rush_creatures(
 fn track_rush_score(
     mut rush: ResMut<RushState>,
     mut score_events: EventReader<RushScoreEvent>,
-    mut combo_events: EventWriter<RushScoreEvent>,
 ) {
-    // Collect events to avoid mutable borrow conflict
-    let events: Vec<_> = score_events.read().cloned().collect();
-
-    for event in events {
+    for event in score_events.read() {
         let multiplier = rush.streak_multiplier();
         let points = (event.points as f32 * multiplier) as u32;
         rush.score += points;
@@ -377,20 +371,17 @@ fn track_rush_score(
                 rush.total_kills += 1;
 
                 // Award combo bonus at milestones (10, 25, 50, 100 kills)
+                // Add directly to score instead of sending another event (avoids Bevy ECS conflict)
                 let streak = rush.kill_streak;
                 if streak == 10 || streak == 25 || streak == 50 || streak == 100 {
                     let combo_bonus = streak * 10;
-                    combo_events.send(RushScoreEvent {
-                        points: combo_bonus,
-                        source: ScoreSource::ComboBonus,
-                    });
+                    let combo_points = (combo_bonus as f32 * multiplier) as u32;
+                    rush.score += combo_points;
+                    info!("Combo bonus ({} streak): {} pts", streak, combo_points);
                 }
             }
             ScoreSource::TimeBonus => {
                 info!("Time bonus: {} pts", points);
-            }
-            ScoreSource::ComboBonus => {
-                info!("Combo bonus: {} pts", points);
             }
         }
     }
