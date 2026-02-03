@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::perks::{PerkId, PerkInventory, PerkData, PerkRegistry, PerkSelectedEvent};
 use crate::player::Player;
-use crate::states::GameState;
+use crate::states::PlayingState;
 
 /// Gets perks the player already has for display
 pub fn get_player_perks(inventory: &PerkInventory) -> Vec<PerkId> {
@@ -205,7 +205,7 @@ pub fn handle_perk_select_input(
     player_query: Query<Entity, With<Player>>,
     button_query: Query<(&Interaction, &PerkButton), Changed<Interaction>>,
     mut perk_events: EventWriter<PerkSelectedEvent>,
-    mut next_state: ResMut<NextState<GameState>>,
+    mut next_state: ResMut<NextState<PlayingState>>,
 ) {
     let Some(selection_state) = selection_state else {
         return;
@@ -234,7 +234,7 @@ pub fn handle_perk_select_input(
                 player_entity,
                 perk_id,
             });
-            next_state.set(GameState::Playing);
+            next_state.set(PlayingState::Active);
             return;
         }
     }
@@ -247,7 +247,7 @@ pub fn handle_perk_select_input(
                 player_entity,
                 perk_id: button.perk_id,
             });
-            next_state.set(GameState::Playing);
+            next_state.set(PlayingState::Active);
             return;
         }
     }

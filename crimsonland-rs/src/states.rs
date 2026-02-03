@@ -18,8 +18,6 @@ pub enum GameState {
     Playing,
     /// Game is paused
     Paused,
-    /// Perk selection screen (on level up)
-    PerkSelect,
     /// Game over screen
     GameOver,
     /// Victory screen
@@ -37,6 +35,8 @@ pub enum PlayingState {
     WaveTransition,
     /// Boss encounter
     BossEncounter,
+    /// Perk selection screen (on level up)
+    PerkSelect,
 }
 
 /// Plugin for game state management
@@ -372,7 +372,6 @@ mod tests {
             GameState::QuestSelect,
             GameState::Playing,
             GameState::Paused,
-            GameState::PerkSelect,
             GameState::GameOver,
             GameState::Victory,
         ];

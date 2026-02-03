@@ -12,7 +12,7 @@ pub use perk_select::*;
 
 use bevy::prelude::*;
 
-use crate::states::GameState;
+use crate::states::{GameState, PlayingState};
 
 /// Plugin for UI functionality
 pub struct UiPlugin;
@@ -49,12 +49,12 @@ impl Plugin for UiPlugin {
                 Update,
                 handle_pause_menu_input.run_if(in_state(GameState::Paused)),
             )
-            // Perk selection
-            .add_systems(OnEnter(GameState::PerkSelect), setup_perk_select)
-            .add_systems(OnExit(GameState::PerkSelect), cleanup_perk_select)
+            // Perk selection (sub-state of Playing to preserve gameplay entities)
+            .add_systems(OnEnter(PlayingState::PerkSelect), setup_perk_select)
+            .add_systems(OnExit(PlayingState::PerkSelect), cleanup_perk_select)
             .add_systems(
                 Update,
-                handle_perk_select_input.run_if(in_state(GameState::PerkSelect)),
+                handle_perk_select_input.run_if(in_state(PlayingState::PerkSelect)),
             )
             // Game over
             .add_systems(OnEnter(GameState::GameOver), setup_game_over)

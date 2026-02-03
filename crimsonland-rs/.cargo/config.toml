@@ -1,0 +1,5 @@
+# WASM build configuration
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
+# Enable getrandom 0.3's WASM JS backend (requires BOTH feature AND config flag)
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

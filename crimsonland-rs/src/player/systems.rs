@@ -9,7 +9,7 @@ use super::resources::*;
 use crate::bonuses::ActiveBonusEffects;
 use crate::creatures::CreatureDeathEvent;
 use crate::perks::{PerkBonuses, PerkInventory};
-use crate::states::GameState;
+use crate::states::{GameState, PlayingState};
 use crate::weapons::EquippedWeapon;
 
 /// Event fired when a player takes damage
@@ -267,7 +267,7 @@ pub fn grant_experience_on_kill(
     mut death_events: EventReader<CreatureDeathEvent>,
     mut player_query: Query<(Entity, &mut Experience, &PerkBonuses), With<Player>>,
     mut level_up_events: EventWriter<PlayerLevelUpEvent>,
-    mut next_state: ResMut<NextState<GameState>>,
+    mut next_state: ResMut<NextState<PlayingState>>,
 ) {
     for event in death_events.read() {
         // Grant experience to all players (for potential multiplayer support)
@@ -281,7 +281,7 @@ pub fn grant_experience_on_kill(
                     player_entity,
                     new_level: exp.level,
                 });
-                next_state.set(GameState::PerkSelect);
+                next_state.set(PlayingState::PerkSelect);
             }
         }
     }
