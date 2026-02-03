@@ -5,7 +5,8 @@ use rand::Rng;
 
 use super::components::*;
 use super::registry::WeaponRegistry;
-use crate::creatures::{Creature, CreatureHealth, CreatureSpeed, MarkedForDespawn};
+use crate::bonuses::components::ActiveBonusEffects;
+use crate::creatures::{Creature, CreatureHealth, CreatureSpeed, FrozenStatus, MarkedForDespawn};
 use crate::perks::components::PerkBonuses;
 use crate::player::components::{AimDirection, Firing, Player};
 
@@ -42,11 +43,14 @@ pub fn fire_weapon_system(
             &Firing,
             &mut EquippedWeapon,
             &PerkBonuses,
+            &ActiveBonusEffects,
         ),
         With<Player>,
     >,
+    mut fire_events: EventWriter<FireWeaponEvent>,
 ) {
-    for (entity, transform, aim, firing, mut weapon, perk_bonuses) in query.iter_mut() {
+    for (entity, transform, aim, firing, mut weapon, perk_bonuses, bonus_effects) in query.iter_mut()
+    {
         // Update cooldown
         weapon.fire_cooldown = (weapon.fire_cooldown - time.delta_seconds()).max(0.0);
 
@@ -60,7 +64,9 @@ pub fn fire_weapon_system(
 
         // Fire projectiles
         let mut rng = rand::thread_rng();
-        let position = transform.translation;
+        // Use aim.direction for muzzle flash offset (slightly in front of player)
+        let muzzle_offset = aim.direction * 20.0;
+        let position = transform.translation + Vec3::new(muzzle_offset.x, muzzle_offset.y, 0.0);
 
         for _ in 0..weapon_data.projectiles_per_shot {
             // Apply spread with accuracy bonus (accuracy reduces spread)
@@ -71,8 +77,11 @@ pub fn fire_weapon_system(
             let final_angle = base_angle + spread_angle;
             let direction = Vec2::new(final_angle.cos(), final_angle.sin());
 
-            // Calculate damage with perk bonuses
+            // Calculate damage with perk and bonus effects
             let mut damage = weapon_data.damage * perk_bonuses.damage_multiplier;
+            if bonus_effects.has_damage_boost() {
+                damage *= 1.5; // 50% damage boost from pickup
+            }
 
             // Check for critical hit
             if perk_bonuses.crit_chance > 0.0 && rng.gen::<f32>() < perk_bonuses.crit_chance {
@@ -135,7 +144,49 @@ pub fn fire_weapon_system(
 
         // Consume ammo and set cooldown (fire rate multiplier reduces cooldown)
         weapon.consume_ammo();
-        weapon.fire_cooldown = weapon_data.fire_cooldown() / perk_bonuses.fire_rate_multiplier;
+        let mut fire_rate_mult = perk_bonuses.fire_rate_multiplier;
+        if bonus_effects.has_fire_rate_boost() {
+            fire_rate_mult *= 1.5; // 50% faster fire rate from pickup
+        }
+        weapon.fire_cooldown = weapon_data.fire_cooldown() / fire_rate_mult;
+
+        // Send fire event for audio and visual effects
+        fire_events.send(FireWeaponEvent {
+            shooter: entity,
+            position,
+            direction: Vec2::new(aim.angle.cos(), aim.angle.sin()),
+            weapon_id: weapon.weapon_id,
+        });
+    }
+}
+
+/// System that handles weapon reloading
+/// Uses reload_speed_multiplier from perks to speed up reloads
+pub fn weapon_reload_system(
+    time: Res<Time>,
+    weapon_registry: Res<WeaponRegistry>,
+    mut query: Query<(&mut EquippedWeapon, &PerkBonuses), With<Player>>,
+) {
+    for (mut weapon, perk_bonuses) in query.iter_mut() {
+        // If currently reloading, update the timer
+        if weapon.is_reloading() {
+            // Apply reload speed multiplier from perks
+            let reload_speed = time.delta_seconds() * perk_bonuses.reload_speed_multiplier;
+            weapon.reload_timer = (weapon.reload_timer - reload_speed).max(0.0);
+
+            // Reload complete
+            if weapon.reload_timer <= 0.0 {
+                weapon.finish_reload();
+            }
+        } else if !weapon.has_ammo() {
+            // Start reload if out of ammo
+            if let Some(weapon_data) = weapon_registry.get(weapon.weapon_id) {
+                let base_reload_time = weapon_data.reload_time;
+                if base_reload_time > 0.0 {
+                    weapon.start_reload(base_reload_time);
+                }
+            }
+        }
     }
 }
 
@@ -282,6 +333,7 @@ pub fn projectile_collision(
     let mut explosions: Vec<(Vec2, f32, f32, Entity)> = Vec::new();
     let mut chain_spawns: Vec<(Vec2, f32, u32, f32, f32, Vec<Entity>, Entity)> = Vec::new();
     let mut split_spawns: Vec<(Vec2, Vec2, f32, u32, u32, f32, Entity)> = Vec::new();
+    let mut freeze_targets: Vec<(Entity, f32, f32, f32)> = Vec::new(); // (entity, duration, original_speed, slow_amount)
 
     for (
         projectile_entity,
@@ -295,7 +347,7 @@ pub fn projectile_collision(
     {
         let projectile_pos = projectile_transform.translation.truncate();
 
-        for (creature_entity, creature_transform, mut creature_health, mut creature_speed) in
+        for (creature_entity, creature_transform, mut creature_health, creature_speed) in
             creature_query.iter_mut()
         {
             // Skip if chain lightning already hit this target
@@ -312,6 +364,8 @@ pub fn projectile_collision(
                 // Apply damage
                 creature_health.damage(projectile.damage);
 
+                // Use projectile.weapon_id for weapon-specific hit effects
+                let _weapon_type = projectile.weapon_id;
                 hit_events.send(ProjectileHitEvent {
                     projectile: projectile_entity,
                     target: creature_entity,
@@ -319,9 +373,14 @@ pub fn projectile_collision(
                     position: projectile_transform.translation,
                 });
 
-                // Apply freezing effect
+                // Queue freezing effect
                 if let Some(freeze) = &freezing {
-                    creature_speed.0 *= freeze.slow_amount;
+                    freeze_targets.push((
+                        creature_entity,
+                        freeze.duration,
+                        creature_speed.0,
+                        freeze.slow_amount,
+                    ));
                 }
 
                 // Queue explosive damage for later
@@ -462,6 +521,37 @@ pub fn projectile_collision(
             if splits > 0 {
                 projectile_commands.insert(Splitter::new(splits, count, mult));
             }
+        }
+    }
+
+    // Apply freeze effects
+    for (entity, duration, original_speed, slow_amount) in freeze_targets {
+        // Apply the slow by setting speed to slowed value and adding FrozenStatus
+        if let Ok((_, _, _, mut speed)) = creature_query.get_mut(entity) {
+            speed.0 = original_speed * slow_amount;
+            commands
+                .entity(entity)
+                .insert(FrozenStatus::new(duration, original_speed, slow_amount));
+        }
+    }
+}
+
+/// Updates frozen creatures and restores speed when effect expires
+pub fn update_frozen_creatures(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut FrozenStatus, &mut CreatureSpeed)>,
+) {
+    for (entity, mut frozen, mut speed) in query.iter_mut() {
+        frozen.tick(time.delta_seconds());
+
+        // Keep speed slowed based on slow_multiplier while frozen
+        speed.0 = frozen.original_speed * frozen.slow_multiplier;
+
+        if frozen.is_expired() {
+            // Restore original speed
+            speed.0 = frozen.original_speed;
+            commands.entity(entity).remove::<FrozenStatus>();
         }
     }
 }

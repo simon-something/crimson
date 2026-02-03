@@ -24,7 +24,9 @@ impl Plugin for RushPlugin {
                 (
                     update_rush_timer,
                     spawn_rush_creatures,
+                    handle_rush_kills,
                     track_rush_score,
+                    handle_rush_round_end,
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing))
@@ -34,7 +36,7 @@ impl Plugin for RushPlugin {
 }
 
 /// Event for scoring in Rush mode
-#[derive(Event)]
+#[derive(Event, Clone)]
 pub struct RushScoreEvent {
     pub points: u32,
     pub source: ScoreSource,
@@ -43,8 +45,11 @@ pub struct RushScoreEvent {
 /// Source of score points
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScoreSource {
+    /// Points from killing a creature
     Kill(CreatureType),
+    /// Bonus for remaining time
     TimeBonus,
+    /// Bonus for kill combo streaks
     ComboBonus,
 }
 
@@ -265,11 +270,32 @@ impl Default for RushState {
 }
 
 /// Sets up rush mode when entering Playing state (if rush mode is active)
-fn setup_rush_mode(mut _commands: Commands) {
-    // Rush mode is only set up if explicitly started
-    // The main menu or mode selection will insert RushState
-    // For now, we check if there's a rush mode marker
-    // This will be properly integrated with the menu system
+/// Applies loadout perks and weapon to the player
+fn setup_rush_mode(
+    rush: Option<Res<RushState>>,
+    mut player_query: Query<
+        (&mut PerkInventory, &mut PerkBonuses, &mut crate::weapons::components::EquippedWeapon),
+        With<crate::player::components::Player>,
+    >,
+) {
+    let Some(rush) = rush else { return };
+
+    for (mut inventory, mut bonuses, mut weapon) in player_query.iter_mut() {
+        // Apply loadout perks using the apply_loadout_to_player function
+        apply_loadout_to_player(&rush.loadout, &mut inventory, &mut bonuses);
+
+        // Set the loadout weapon
+        *weapon = crate::weapons::components::EquippedWeapon::new(
+            rush.loadout.weapon,
+            Some(200), // Rush mode gives generous ammo
+        );
+
+        info!(
+            "Rush loadout applied: {} with {} perks",
+            rush.loadout.name,
+            rush.loadout.perks.len()
+        );
+    }
 }
 
 /// Cleans up rush mode when leaving Playing state
@@ -332,21 +358,96 @@ fn spawn_rush_creatures(
 fn track_rush_score(
     mut rush: ResMut<RushState>,
     mut score_events: EventReader<RushScoreEvent>,
+    mut combo_events: EventWriter<RushScoreEvent>,
 ) {
-    for event in score_events.read() {
+    // Collect events to avoid mutable borrow conflict
+    let events: Vec<_> = score_events.read().cloned().collect();
+
+    for event in events {
         let multiplier = rush.streak_multiplier();
         let points = (event.points as f32 * multiplier) as u32;
         rush.score += points;
 
         match event.source {
-            ScoreSource::Kill(_) => {
+            ScoreSource::Kill(creature_type) => {
+                // Log the kill with creature type
+                info!("Kill: {:?} - {} pts (x{:.1})", creature_type, points, multiplier);
                 rush.kill_streak += 1;
                 rush.streak_timer = 0.0;
                 rush.total_kills += 1;
+
+                // Award combo bonus at milestones (10, 25, 50, 100 kills)
+                let streak = rush.kill_streak;
+                if streak == 10 || streak == 25 || streak == 50 || streak == 100 {
+                    let combo_bonus = streak * 10;
+                    combo_events.send(RushScoreEvent {
+                        points: combo_bonus,
+                        source: ScoreSource::ComboBonus,
+                    });
+                }
             }
-            ScoreSource::TimeBonus | ScoreSource::ComboBonus => {}
+            ScoreSource::TimeBonus => {
+                info!("Time bonus: {} pts", points);
+            }
+            ScoreSource::ComboBonus => {
+                info!("Combo bonus: {} pts", points);
+            }
         }
     }
+}
+
+/// Handles creature deaths in Rush mode - sends score events
+fn handle_rush_kills(
+    rush: Option<Res<RushState>>,
+    mut death_events: EventReader<crate::creatures::systems::CreatureDeathEvent>,
+    mut score_events: EventWriter<RushScoreEvent>,
+) {
+    // Only run in Rush mode
+    if rush.is_none() {
+        return;
+    }
+
+    for event in death_events.read() {
+        // Use RushState::creature_score to get base points
+        let base_score = RushState::creature_score(event.creature_type);
+        score_events.send(RushScoreEvent {
+            points: base_score,
+            source: ScoreSource::Kill(event.creature_type),
+        });
+    }
+}
+
+/// Handles round end in Rush mode - calculates time bonus
+fn handle_rush_round_end(
+    mut rush: ResMut<RushState>,
+    mut score_events: EventWriter<RushScoreEvent>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if !rush.round_over {
+        return;
+    }
+
+    // Calculate time bonus using the method
+    let time_bonus = rush.calculate_time_bonus();
+    if time_bonus > 0 {
+        score_events.send(RushScoreEvent {
+            points: time_bonus,
+            source: ScoreSource::TimeBonus,
+        });
+    }
+
+    // Display loadout info
+    info!(
+        "Rush Round Over! Loadout: {} | Final Score: {}",
+        rush.loadout.name, rush.score
+    );
+
+    // Transition to game over
+    next_state.set(GameState::GameOver);
+
+    // Mark as processed to prevent re-triggering
+    rush.round_over = false;
+    rush.time_remaining = -1.0; // Prevent re-triggering
 }
 
 /// Applies loadout perks to a player (recalculates bonuses from inventory)

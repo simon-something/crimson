@@ -57,6 +57,10 @@ pub struct EquippedWeapon {
     pub weapon_id: WeaponId,
     pub ammo: Option<u32>,
     pub fire_cooldown: f32,
+    /// Timer for reload (0.0 means not reloading)
+    pub reload_timer: f32,
+    /// Max ammo capacity for current weapon
+    pub max_ammo: Option<u32>,
 }
 
 impl Default for EquippedWeapon {
@@ -65,6 +69,8 @@ impl Default for EquippedWeapon {
             weapon_id: WeaponId::Pistol,
             ammo: None, // Infinite ammo for pistol
             fire_cooldown: 0.0,
+            reload_timer: 0.0,
+            max_ammo: None,
         }
     }
 }
@@ -75,11 +81,13 @@ impl EquippedWeapon {
             weapon_id,
             ammo,
             fire_cooldown: 0.0,
+            reload_timer: 0.0,
+            max_ammo: ammo,
         }
     }
 
     pub fn can_fire(&self) -> bool {
-        self.fire_cooldown <= 0.0 && self.ammo.map(|a| a > 0).unwrap_or(true)
+        self.fire_cooldown <= 0.0 && self.reload_timer <= 0.0 && self.ammo.map(|a| a > 0).unwrap_or(true)
     }
 
     pub fn consume_ammo(&mut self) {
@@ -90,6 +98,23 @@ impl EquippedWeapon {
 
     pub fn has_ammo(&self) -> bool {
         self.ammo.map(|a| a > 0).unwrap_or(true)
+    }
+
+    pub fn is_reloading(&self) -> bool {
+        self.reload_timer > 0.0
+    }
+
+    pub fn start_reload(&mut self, reload_time: f32) {
+        if self.ammo.is_some() && !self.is_reloading() {
+            self.reload_timer = reload_time;
+        }
+    }
+
+    pub fn finish_reload(&mut self) {
+        if let Some(max) = self.max_ammo {
+            self.ammo = Some(max);
+        }
+        self.reload_timer = 0.0;
     }
 }
 

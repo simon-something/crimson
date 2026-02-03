@@ -86,6 +86,12 @@ pub struct ScreenShake {
     pub decay: f32,
 }
 
+/// Tracks the base camera position before shake offset is applied
+#[derive(Resource, Debug, Default)]
+pub struct CameraBasePosition {
+    pub position: Vec2,
+}
+
 impl ScreenShake {
     pub fn add(&mut self, intensity: f32, duration: f32) {
         // Stack shakes but cap intensity

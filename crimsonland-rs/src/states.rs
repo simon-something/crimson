@@ -12,7 +12,8 @@ pub enum GameState {
     Loading,
     /// Main menu
     MainMenu,
-    /// Quest selection screen
+    /// Quest selection screen (future feature)
+    #[allow(dead_code)]
     QuestSelect,
     /// Actively playing
     Playing,
@@ -33,9 +34,11 @@ pub enum PlayingState {
     /// Normal gameplay
     #[default]
     Active,
-    /// Transitioning between waves
+    /// Transitioning between waves (future feature)
+    #[allow(dead_code)]
     WaveTransition,
-    /// Boss encounter
+    /// Boss encounter (future feature)
+    #[allow(dead_code)]
     BossEncounter,
 }
 
@@ -68,6 +71,7 @@ impl Plugin for GameStatePlugin {
 
 /// Resource to track loading progress
 #[derive(Resource, Default)]
+#[allow(dead_code)]
 pub struct LoadingState {
     pub assets_loaded: bool,
     pub config_loaded: bool,

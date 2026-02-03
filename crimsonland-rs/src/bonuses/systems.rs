@@ -5,7 +5,9 @@ use rand::Rng;
 
 use super::components::*;
 use crate::creatures::components::{Creature, CreatureHealth, MarkedForDespawn};
-use crate::player::components::{Experience, Health, Player};
+use crate::creatures::systems::CreatureDeathEvent;
+use crate::perks::components::PerkBonuses;
+use crate::player::components::{Experience, Health, MoveSpeed, Player};
 use crate::weapons::components::{EquippedWeapon, WeaponId};
 
 /// Event to spawn a bonus
@@ -100,6 +102,7 @@ pub fn bonus_lifetime(
 }
 
 /// Applies the effects of collected bonuses
+#[allow(clippy::type_complexity)]
 pub fn apply_bonus_effects(
     mut events: EventReader<BonusCollectedEvent>,
     mut player_query: Query<
@@ -108,6 +111,7 @@ pub fn apply_bonus_effects(
             &mut Experience,
             &mut EquippedWeapon,
             Option<&mut ActiveBonusEffects>,
+            &PerkBonuses,
         ),
         With<Player>,
     >,
@@ -116,7 +120,7 @@ pub fn apply_bonus_effects(
     mut creature_health: Query<&mut CreatureHealth>,
 ) {
     for event in events.read() {
-        let Ok((mut health, mut exp, mut weapon, active_effects)) =
+        let Ok((mut health, mut exp, mut weapon, active_effects, perk_bonuses)) =
             player_query.get_mut(event.player_entity)
         else {
             continue;
@@ -155,8 +159,12 @@ pub fn apply_bonus_effects(
                 ];
                 let mut rng = rand::thread_rng();
                 let idx = rng.gen_range(0..weapons.len());
-                weapon.weapon_id = weapons[idx];
-                weapon.ammo = Some(100); // Give some ammo
+                let new_weapon_id = weapons[idx];
+                // Apply ammo multiplier from perks
+                let base_ammo = 100;
+                let bonus_ammo = (base_ammo as f32 * perk_bonuses.ammo_multiplier) as u32;
+                // Use EquippedWeapon::new to create new weapon with proper initialization
+                *weapon = EquippedWeapon::new(new_weapon_id, Some(bonus_ammo));
             }
 
             // Temporary effects
@@ -206,6 +214,85 @@ pub fn apply_bonus_effects(
                 // Freeze is handled by the creatures module looking at a global state
                 // For now, we'll skip implementation
             }
+        }
+    }
+}
+
+/// Spawns bonuses when creatures die (chance-based with weighted selection)
+pub fn spawn_bonus_on_death(
+    mut death_events: EventReader<CreatureDeathEvent>,
+    mut spawn_events: EventWriter<SpawnBonusEvent>,
+) {
+    let mut rng = rand::thread_rng();
+    const DROP_CHANCE: f32 = 0.15; // 15% chance to drop a bonus
+
+    // All bonus types for weighted selection
+    let bonus_types = [
+        BonusType::SmallHealth,
+        BonusType::LargeHealth,
+        BonusType::FullHealth,
+        BonusType::SmallExp,
+        BonusType::LargeExp,
+        BonusType::WeaponPickup,
+        BonusType::SpeedBoost,
+        BonusType::FireRateBoost,
+        BonusType::DamageBoost,
+        BonusType::Invincibility,
+        BonusType::Shield,
+        BonusType::Nuke,
+        BonusType::Freeze,
+        BonusType::SlowMotion,
+    ];
+
+    // Calculate total weight
+    let total_weight: u32 = bonus_types.iter().map(|b| b.spawn_weight()).sum();
+
+    for event in death_events.read() {
+        // Roll for drop
+        if rng.gen::<f32>() > DROP_CHANCE {
+            continue;
+        }
+
+        // Weighted random selection
+        let roll = rng.gen_range(0..total_weight);
+        let mut cumulative = 0;
+        let mut selected = BonusType::SmallHealth;
+
+        for bonus_type in &bonus_types {
+            cumulative += bonus_type.spawn_weight();
+            if roll < cumulative {
+                selected = *bonus_type;
+                break;
+            }
+        }
+
+        spawn_events.send(SpawnBonusEvent {
+            bonus_type: selected,
+            position: event.position,
+        });
+    }
+}
+
+/// Updates active bonus effect timers
+pub fn update_active_bonus_effects(
+    time: Res<Time>,
+    mut query: Query<&mut ActiveBonusEffects, With<Player>>,
+) {
+    for mut effects in query.iter_mut() {
+        effects.tick(time.delta_seconds());
+    }
+}
+
+/// Applies speed boost to player movement
+pub fn apply_speed_boost(
+    mut query: Query<(&mut MoveSpeed, &ActiveBonusEffects), With<Player>>,
+    base_speed: Res<crate::player::resources::PlayerConfig>,
+) {
+    for (mut speed, effects) in query.iter_mut() {
+        if effects.has_speed_boost() {
+            speed.0 = base_speed.base_move_speed * 1.5; // 50% speed boost
+        } else {
+            speed.0 = base_speed.base_move_speed;
         }
     }
 }

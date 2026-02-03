@@ -6,6 +6,7 @@ use rand::Rng;
 
 use super::components::*;
 use super::resources::*;
+use crate::bonuses::components::ActiveBonusEffects;
 use crate::creatures::systems::CreatureDeathEvent;
 use crate::perks::components::{PerkBonuses, PerkInventory};
 use crate::states::GameState;
@@ -34,17 +35,30 @@ pub struct PlayerLevelUpEvent {
 
 /// Spawns the player entity when entering Playing state
 pub fn spawn_player(mut commands: Commands, config: Res<PlayerConfig>) {
+    // Player index for multiplayer support (0 = first player)
+    let player_index: u8 = 0;
+
+    // Different colors for different player indices in multiplayer
+    let player_colors = [
+        Color::srgb(0.2, 0.6, 1.0), // Blue - Player 1
+        Color::srgb(1.0, 0.4, 0.2), // Orange - Player 2
+        Color::srgb(0.2, 1.0, 0.4), // Green - Player 3
+        Color::srgb(1.0, 0.8, 0.2), // Yellow - Player 4
+    ];
+    let color = player_colors.get(player_index as usize).copied().unwrap_or(player_colors[0]);
+
     commands.spawn((
         PlayerBundle {
-            player: Player::default(),
+            player: Player { index: player_index },
             health: Health::new(config.base_health),
             experience: Experience::new(),
             move_speed: MoveSpeed(config.base_move_speed),
-            aim_direction: AimDirection::default(),
+            // Use from_angle to start facing right (angle 0)
+            aim_direction: AimDirection::from_angle(0.0),
             firing: Firing::default(),
             sprite: SpriteBundle {
                 sprite: Sprite {
-                    color: Color::srgb(0.2, 0.6, 1.0),
+                    color,
                     custom_size: Some(Vec2::new(32.0, 32.0)),
                     ..default()
                 },
@@ -57,6 +71,8 @@ pub fn spawn_player(mut commands: Commands, config: Res<PlayerConfig>) {
         // Perk system components
         PerkInventory::new(),
         PerkBonuses::default(),
+        // Active bonus effects (from pickups)
+        ActiveBonusEffects::default(),
     ));
 }
 
@@ -142,21 +158,40 @@ pub fn player_shooting(
 
 /// Applies damage to players from damage events
 /// Integrates perk bonuses: damage_reduction reduces incoming damage, dodge_chance can avoid hits entirely
+/// Also respects ActiveBonusEffects: invincibility and shield
 pub fn apply_player_damage(
     mut events: EventReader<PlayerDamageEvent>,
-    mut query: Query<(&mut Health, Option<&mut Invincibility>, &PerkBonuses), With<Player>>,
+    mut query: Query<
+        (
+            &Player,
+            &mut Health,
+            Option<&mut Invincibility>,
+            &PerkBonuses,
+            &ActiveBonusEffects,
+        ),
+    >,
     config: Res<PlayerConfig>,
     mut commands: Commands,
 ) {
     let mut rng = rand::thread_rng();
 
     for event in events.read() {
-        if let Ok((mut health, invincibility, perk_bonuses)) = query.get_mut(event.player_entity) {
-            // Skip if invincible
+        if let Ok((player, mut health, invincibility, perk_bonuses, bonus_effects)) =
+            query.get_mut(event.player_entity)
+        {
+            // Skip if invincible (perk or pickup)
             if let Some(inv) = &invincibility {
                 if inv.is_active() {
                     continue;
                 }
+            }
+            if bonus_effects.has_invincibility() {
+                continue;
+            }
+
+            // Shield absorbs damage completely
+            if bonus_effects.has_shield() {
+                continue;
             }
 
             // Dodge check - chance to completely avoid damage (Dodger perk)
@@ -167,6 +202,10 @@ pub fn apply_player_damage(
             // Apply damage reduction (ThickSkin perk)
             let reduced_damage = event.damage * (1.0 - perk_bonuses.damage_reduction);
             health.damage(reduced_damage);
+
+            // Log damage for multiplayer support (uses player.index)
+            info!("Player {} took {:.1} damage (reduced from {:.1})",
+                player.index + 1, reduced_damage, event.damage);
 
             // Grant invincibility after taking damage
             commands
@@ -192,25 +231,12 @@ pub fn check_player_death(
     }
 }
 
-/// Updates player experience and handles level ups
+/// Updates player experience display (level ups are handled by grant_experience_on_kill)
 pub fn update_player_experience(
-    mut query: Query<(Entity, &mut Experience), With<Player>>,
-    mut level_up_events: EventWriter<PlayerLevelUpEvent>,
-    mut next_state: ResMut<NextState<GameState>>,
+    _query: Query<(Entity, &Experience), With<Player>>,
 ) {
-    for (entity, mut exp) in query.iter_mut() {
-        // Experience is added externally, we just check for level ups
-        if exp.current >= exp.to_next_level {
-            let leveled = exp.add(0); // Process level up
-            if leveled {
-                level_up_events.send(PlayerLevelUpEvent {
-                    player_entity: entity,
-                    new_level: exp.level,
-                });
-                next_state.set(GameState::PerkSelect);
-            }
-        }
-    }
+    // Experience updates and level ups are handled by grant_experience_on_kill
+    // This system exists for potential future UI updates or experience decay mechanics
 }
 
 /// Ticks down invincibility timers
@@ -224,20 +250,20 @@ pub fn player_invincibility_timer(time: Res<Time>, mut query: Query<&mut Invinci
 /// Applies exp_multiplier from perks (FastLearner)
 pub fn grant_experience_on_kill(
     mut death_events: EventReader<CreatureDeathEvent>,
-    mut player_query: Query<(&mut Experience, &PerkBonuses), With<Player>>,
+    mut player_query: Query<(Entity, &mut Experience, &PerkBonuses), With<Player>>,
     mut level_up_events: EventWriter<PlayerLevelUpEvent>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     for event in death_events.read() {
         // Grant experience to all players (for potential multiplayer support)
-        for (mut exp, perk_bonuses) in player_query.iter_mut() {
+        for (player_entity, mut exp, perk_bonuses) in player_query.iter_mut() {
             // Apply exp multiplier from FastLearner perk
             let exp_amount = (event.experience as f32 * perk_bonuses.exp_multiplier) as u32;
             let leveled_up = exp.add(exp_amount);
 
             if leveled_up {
                 level_up_events.send(PlayerLevelUpEvent {
-                    player_entity: Entity::PLACEHOLDER, // TODO: Get actual player entity
+                    player_entity,
                     new_level: exp.level,
                 });
                 next_state.set(GameState::PerkSelect);

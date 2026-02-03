@@ -29,10 +29,17 @@ impl Plugin for UiPlugin {
             )
             // HUD
             .add_systems(OnEnter(GameState::Playing), setup_hud)
-            .add_systems(OnExit(GameState::Playing), cleanup_hud)
+            .add_systems(OnExit(GameState::Playing), (cleanup_hud, cleanup_creature_health_bars))
             .add_systems(
                 Update,
-                (update_hud, update_hud_perks, update_hud_game_mode)
+                (
+                    update_hud,
+                    update_hud_perks,
+                    update_hud_game_mode,
+                    spawn_creature_health_bars,
+                    update_creature_health_bars,
+                    cleanup_creature_health_bars,
+                )
                     .run_if(in_state(GameState::Playing)),
             )
             // Pause menu

@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use crate::creatures::components::{Creature, CreatureHealth};
 use crate::perks::components::PerkInventory;
 use crate::player::components::{Experience, Health, Invincibility, Player};
 use crate::quests::systems::{ActiveQuest, QuestProgress};
@@ -56,6 +57,17 @@ pub struct PerkCountText;
 /// Marker for invincibility indicator
 #[derive(Component)]
 pub struct InvincibilityIndicator;
+
+/// Marker for creature health bar (world-space sprite)
+#[derive(Component)]
+pub struct CreatureHealthBar {
+    /// The creature entity this health bar belongs to
+    pub creature: Entity,
+}
+
+/// Marker for health bar background
+#[derive(Component)]
+pub struct CreatureHealthBarBackground;
 
 /// Sets up the HUD
 pub fn setup_hud(mut commands: Commands) {
@@ -357,7 +369,7 @@ pub fn cleanup_hud(mut commands: Commands, query: Query<Entity, With<HudRoot>>) 
 }
 
 /// Updates basic HUD elements (health, XP, level, weapon)
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_hud(
     player_query: Query<(&Health, &Experience, &EquippedWeapon), With<Player>>,
     mut health_bar_query: Query<&mut Style, With<HealthBar>>,
@@ -425,11 +437,18 @@ pub fn update_hud(
         }
     }
 
-    // Update ammo text
+    // Update ammo text - use has_ammo() to check and color accordingly
     if let Ok(mut text) = ammo_text_query.get_single_mut() {
+        let has_ammo = weapon.has_ammo();
         text.sections[0].value = match weapon.ammo {
             Some(ammo) => format!("{}", ammo),
             None => "∞".into(),
+        };
+        // Red text when out of ammo
+        text.sections[0].style.color = if has_ammo {
+            Color::WHITE
+        } else {
+            Color::srgb(1.0, 0.3, 0.3)
         };
     }
 }
@@ -552,6 +571,115 @@ pub fn update_hud_game_mode(
     }
 }
 
+/// Spawns health bars above damaged creatures
+#[allow(clippy::type_complexity)]
+pub fn spawn_creature_health_bars(
+    mut commands: Commands,
+    creatures: Query<(Entity, &CreatureHealth), (With<Creature>, Without<CreatureHealthBar>)>,
+    existing_bars: Query<&CreatureHealthBar>,
+) {
+    for (entity, health) in creatures.iter() {
+        // Only spawn health bar if creature has taken damage
+        if health.current < health.max {
+            // Check if this creature already has a health bar
+            let has_bar = existing_bars.iter().any(|bar| bar.creature == entity);
+            if !has_bar {
+                // Spawn health bar background (dark)
+                commands.spawn((
+                    CreatureHealthBarBackground,
+                    CreatureHealthBar { creature: entity },
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::srgba(0.1, 0.1, 0.1, 0.8),
+                            custom_size: Some(Vec2::new(32.0, 4.0)),
+                            ..default()
+                        },
+                        transform: Transform::from_translation(Vec3::new(0.0, 20.0, 10.0)),
+                        ..default()
+                    },
+                ));
+
+                // Spawn health bar fill (red/green based on percentage)
+                commands.spawn((
+                    CreatureHealthBar { creature: entity },
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::srgb(0.8, 0.2, 0.2),
+                            custom_size: Some(Vec2::new(32.0 * health.percentage(), 4.0)),
+                            ..default()
+                        },
+                        transform: Transform::from_translation(Vec3::new(0.0, 20.0, 11.0)),
+                        ..default()
+                    },
+                ));
+            }
+        }
+    }
+}
+
+/// Updates creature health bar positions and sizes
+#[allow(clippy::type_complexity)]
+pub fn update_creature_health_bars(
+    creatures: Query<(&Transform, &CreatureHealth), With<Creature>>,
+    mut health_bars: Query<
+        (&CreatureHealthBar, &mut Transform, &mut Sprite),
+        (Without<Creature>, Without<CreatureHealthBarBackground>),
+    >,
+    mut backgrounds: Query<
+        (&CreatureHealthBar, &mut Transform),
+        (
+            With<CreatureHealthBarBackground>,
+            Without<Creature>,
+        ),
+    >,
+) {
+    // Update health bar fills
+    for (bar, mut transform, mut sprite) in health_bars.iter_mut() {
+        if let Ok((creature_transform, health)) = creatures.get(bar.creature) {
+            // Position above creature
+            transform.translation.x = creature_transform.translation.x;
+            transform.translation.y = creature_transform.translation.y + 20.0;
+
+            // Update width based on health percentage
+            let percentage = health.percentage();
+            if let Some(ref mut size) = sprite.custom_size {
+                size.x = 32.0 * percentage;
+            }
+
+            // Color: green when healthy, yellow mid, red low
+            sprite.color = if percentage > 0.6 {
+                Color::srgb(0.2, 0.8, 0.2)
+            } else if percentage > 0.3 {
+                Color::srgb(0.8, 0.8, 0.2)
+            } else {
+                Color::srgb(0.8, 0.2, 0.2)
+            };
+        }
+    }
+
+    // Update background positions
+    for (bar, mut transform) in backgrounds.iter_mut() {
+        if let Ok((creature_transform, _)) = creatures.get(bar.creature) {
+            transform.translation.x = creature_transform.translation.x;
+            transform.translation.y = creature_transform.translation.y + 20.0;
+        }
+    }
+}
+
+/// Cleans up health bars when creatures die
+pub fn cleanup_creature_health_bars(
+    mut commands: Commands,
+    creatures: Query<Entity, With<Creature>>,
+    health_bars: Query<(Entity, &CreatureHealthBar)>,
+) {
+    for (bar_entity, bar) in health_bars.iter() {
+        // If the creature no longer exists, despawn the health bar
+        if creatures.get(bar.creature).is_err() {
+            commands.entity(bar_entity).despawn_recursive();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +687,13 @@ mod tests {
     #[test]
     fn hud_root_is_component() {
         let _root = HudRoot;
+    }
+
+    #[test]
+    fn creature_health_bar_tracks_entity() {
+        let bar = CreatureHealthBar {
+            creature: Entity::PLACEHOLDER,
+        };
+        assert_eq!(bar.creature, Entity::PLACEHOLDER);
     }
 }

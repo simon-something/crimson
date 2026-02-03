@@ -20,7 +20,7 @@ pub struct CreaturesPlugin;
 
 impl Plugin for CreaturesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CreatureRegistry>()
+        app.insert_resource(CreatureRegistry::new())
             .add_event::<SpawnCreatureEvent>()
             .add_event::<CreatureDeathEvent>()
             .add_systems(OnExit(GameState::Playing), despawn_all_creatures)

@@ -218,6 +218,35 @@ pub struct ExperienceValue(pub u32);
 #[derive(Component)]
 pub struct MarkedForDespawn;
 
+/// Status effect: creature is frozen/slowed
+#[derive(Component, Debug, Clone)]
+pub struct FrozenStatus {
+    /// Remaining duration of the effect
+    pub remaining_duration: f32,
+    /// Original speed before being frozen
+    pub original_speed: f32,
+    /// Current slow amount (0.0 = full stop, 1.0 = no slow)
+    pub slow_multiplier: f32,
+}
+
+impl FrozenStatus {
+    pub fn new(duration: f32, original_speed: f32, slow_multiplier: f32) -> Self {
+        Self {
+            remaining_duration: duration,
+            original_speed,
+            slow_multiplier,
+        }
+    }
+
+    pub fn tick(&mut self, delta: f32) {
+        self.remaining_duration -= delta;
+    }
+
+    pub fn is_expired(&self) -> bool {
+        self.remaining_duration <= 0.0
+    }
+}
+
 /// Bundle for spawning creatures
 #[derive(Bundle)]
 pub struct CreatureBundle {

@@ -19,6 +19,8 @@ pub struct EffectsPlugin;
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<SpawnEffectEvent>()
+            .init_resource::<ScreenShake>()
+            .init_resource::<CameraBasePosition>()
             .add_systems(OnExit(GameState::Playing), cleanup_all_effects)
             .add_systems(
                 Update,
@@ -29,9 +31,14 @@ impl Plugin for EffectsPlugin {
                     spawn_pickup_effect,
                     spawn_muzzle_flash,
                     spawn_hit_effect,
+                    // Trigger screen shake from hits
+                    trigger_screen_shake_on_hit,
+                    // Explosion effects
+                    spawn_explosion_effects,
                     // Effect processing
                     handle_effect_spawns,
                     update_particles,
+                    update_camera_follow,
                     update_screen_shake,
                     cleanup_expired_effects,
                 )

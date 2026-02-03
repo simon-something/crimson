@@ -17,11 +17,13 @@ impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AudioSettings>()
             .init_resource::<CurrentMusic>()
+            .add_event::<PlaySoundEvent>()
             .add_systems(OnEnter(GameState::MainMenu), start_menu_music)
             .add_systems(OnExit(GameState::MainMenu), stop_menu_music)
             .add_systems(OnEnter(GameState::Playing), start_game_music)
             .add_systems(OnExit(GameState::Playing), stop_game_music)
-            .add_systems(Update, play_sound_effects.run_if(in_state(GameState::Playing)));
+            .add_systems(Update, play_sound_effects.run_if(in_state(GameState::Playing)))
+            .add_systems(Update, play_menu_sounds.run_if(in_state(GameState::MainMenu)));
     }
 }
 

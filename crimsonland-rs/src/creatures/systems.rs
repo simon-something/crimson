@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 use super::components::*;
 use super::spawner::{calculate_spawn_position, SpawnConfig};
+use crate::audio::{PlaySoundEvent, SoundEffect};
 use crate::player::components::Player;
 use crate::player::systems::PlayerDamageEvent;
 
@@ -28,6 +29,7 @@ pub fn handle_creature_spawns(
     mut commands: Commands,
     mut events: EventReader<SpawnCreatureEvent>,
     player_query: Query<&Transform, With<Player>>,
+    mut sound_events: EventWriter<PlaySoundEvent>,
 ) {
     let spawn_config = SpawnConfig::default();
 
@@ -42,6 +44,14 @@ pub fn handle_creature_spawns(
         };
 
         commands.spawn(CreatureBundle::new(event.creature_type, position));
+
+        // Play spawn sound for bosses and special creatures
+        if event.creature_type.is_boss() {
+            sound_events.send(PlaySoundEvent {
+                sound: SoundEffect::CreatureSpawn,
+                position: Some(position.truncate()),
+            });
+        }
     }
 }
 
@@ -80,7 +90,7 @@ pub fn creature_ai_update(
         // Update target
         ai_state.target = nearest_player.map(|(e, _)| e);
 
-        // Update AI mode based on creature type
+        // Update AI mode based on creature type and situation
         match creature.creature_type {
             CreatureType::Turret | CreatureType::BossNest => {
                 ai_state.mode = AIMode::Stationary;
@@ -94,6 +104,30 @@ pub fn creature_ai_update(
                     } else {
                         ai_state.mode = AIMode::Circle;
                     }
+                }
+            }
+            CreatureType::Ghost => {
+                // Ghosts wander when far from player, chase when close
+                if let Some((_, distance)) = nearest_player {
+                    if distance > 300.0 {
+                        ai_state.mode = AIMode::Wander;
+                    } else {
+                        ai_state.mode = AIMode::Chase;
+                    }
+                } else {
+                    ai_state.mode = AIMode::Wander;
+                }
+            }
+            CreatureType::Necromancer => {
+                // Necromancers wander and summon, flee when player is close
+                if let Some((_, distance)) = nearest_player {
+                    if distance < 150.0 {
+                        ai_state.mode = AIMode::Flee;
+                    } else {
+                        ai_state.mode = AIMode::Wander;
+                    }
+                } else {
+                    ai_state.mode = AIMode::Wander;
                 }
             }
             _ => {
@@ -112,11 +146,19 @@ pub fn creature_ai_update(
 }
 
 /// Moves creatures based on their AI state
+/// Respects slow motion effect from player bonus pickups
+#[allow(clippy::type_complexity)]
 pub fn creature_movement(
-    player_query: Query<&Transform, (With<Player>, Without<Creature>)>,
+    player_query: Query<(&Transform, Option<&crate::bonuses::components::ActiveBonusEffects>), (With<Player>, Without<Creature>)>,
     mut creature_query: Query<(&mut Transform, &AIState, &CreatureSpeed), With<Creature>>,
     time: Res<Time>,
 ) {
+    // Check if any player has slow motion active
+    let slow_motion_active = player_query
+        .iter()
+        .any(|(_, effects)| effects.map(|e| e.has_slow_motion()).unwrap_or(false));
+    let speed_multiplier = if slow_motion_active { 0.3 } else { 1.0 };
+
     for (mut transform, ai_state, speed) in creature_query.iter_mut() {
         if speed.0 <= 0.0 || ai_state.mode == AIMode::Dead {
             continue;
@@ -128,7 +170,7 @@ pub fn creature_movement(
         match ai_state.mode {
             AIMode::Chase => {
                 if let Some(target) = ai_state.target {
-                    if let Ok(player_transform) = player_query.get(target) {
+                    if let Ok((player_transform, _)) = player_query.get(target) {
                         let player_pos = player_transform.translation.truncate();
                         direction = (player_pos - creature_pos).normalize_or_zero();
                     }
@@ -136,7 +178,7 @@ pub fn creature_movement(
             }
             AIMode::Flee => {
                 if let Some(target) = ai_state.target {
-                    if let Ok(player_transform) = player_query.get(target) {
+                    if let Ok((player_transform, _)) = player_query.get(target) {
                         let player_pos = player_transform.translation.truncate();
                         direction = (creature_pos - player_pos).normalize_or_zero();
                     }
@@ -144,7 +186,7 @@ pub fn creature_movement(
             }
             AIMode::Circle => {
                 if let Some(target) = ai_state.target {
-                    if let Ok(player_transform) = player_query.get(target) {
+                    if let Ok((player_transform, _)) = player_query.get(target) {
                         let player_pos = player_transform.translation.truncate();
                         let to_player = player_pos - creature_pos;
                         // Move perpendicular to player
@@ -159,7 +201,7 @@ pub fn creature_movement(
         }
 
         if direction != Vec2::ZERO {
-            let movement = direction * speed.0 * time.delta_seconds();
+            let movement = direction * speed.0 * speed_multiplier * time.delta_seconds();
             transform.translation.x += movement.x;
             transform.translation.y += movement.y;
         }

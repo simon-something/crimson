@@ -24,11 +24,14 @@ impl Plugin for BonusesPlugin {
             .add_systems(
                 Update,
                 (
+                    spawn_bonus_on_death,
                     handle_bonus_spawns,
                     bonus_attraction,
                     bonus_collection,
                     bonus_lifetime,
                     apply_bonus_effects,
+                    update_active_bonus_effects,
+                    apply_speed_boost,
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing)),

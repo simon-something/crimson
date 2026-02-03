@@ -42,6 +42,8 @@ pub struct QuestProgress {
     pub waiting_for_delay: bool,
     /// Total kills in this quest
     pub kills: u32,
+    /// Boss kills in this quest
+    pub boss_kills: u32,
 }
 
 impl QuestProgress {
@@ -318,7 +320,59 @@ pub fn track_quest_kills(
     mut progress: ResMut<QuestProgress>,
     mut death_events: EventReader<CreatureDeathEvent>,
 ) {
-    for _event in death_events.read() {
+    for event in death_events.read() {
         progress.kills += 1;
+        // Track boss kills separately
+        if event.creature_type.is_boss() {
+            progress.boss_kills += 1;
+        }
+    }
+}
+
+/// Handles wave completion events for UI/audio feedback
+pub fn handle_wave_completion(
+    mut wave_events: EventReader<WaveCompletedEvent>,
+    quest_db: Res<QuestDatabase>,
+    active_quest: Res<ActiveQuest>,
+) {
+    for event in wave_events.read() {
+        // Use wave_index for progress display
+        let wave_number = event.wave_index + 1;
+
+        // Get total waves for this quest
+        if let Some(quest_id) = active_quest.quest_id {
+            if let Some(quest_data) = quest_db.get(quest_id) {
+                let total_waves = quest_data.waves.len();
+                // Sum total creatures across all waves using WaveData.total_creatures()
+                let total_creatures: u32 = quest_data
+                    .waves
+                    .iter()
+                    .map(|w| w.total_creatures())
+                    .sum();
+                info!(
+                    "Wave {}/{} complete! Quest has {} total creatures",
+                    wave_number, total_waves, total_creatures
+                );
+            }
+        }
+    }
+}
+
+/// Handles quest completion events for victory screen data
+pub fn handle_quest_completion(
+    mut quest_events: EventReader<QuestCompletedEvent>,
+    quest_db: Res<QuestDatabase>,
+) {
+    for event in quest_events.read() {
+        // Use all fields from the event
+        let quest_name = quest_db
+            .get(event.quest_id)
+            .map(|q| q.name.as_str())
+            .unwrap_or("Unknown");
+
+        info!(
+            "Quest '{}' completed in {:.1}s with {} kills!",
+            quest_name, event.time, event.kills
+        );
     }
 }

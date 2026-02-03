@@ -28,6 +28,8 @@ impl QuestDatabase {
         self.quests.iter().find(|q| q.id == id)
     }
 
+    /// Get quest by numeric index (for quest selection menu)
+    #[allow(dead_code)]
     pub fn get_by_index(&self, index: usize) -> Option<&QuestData> {
         self.quests.get(index)
     }

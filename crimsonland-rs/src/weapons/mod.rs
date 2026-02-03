@@ -27,10 +27,12 @@ impl Plugin for WeaponsPlugin {
             .add_systems(
                 Update,
                 (
+                    weapon_reload_system,
                     fire_weapon_system,
                     homing_projectile_update,
                     projectile_movement,
                     projectile_collision,
+                    update_frozen_creatures,
                     projectile_lifetime,
                     cleanup_projectiles,
                 )

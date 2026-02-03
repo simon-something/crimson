@@ -3,11 +3,15 @@
 use bevy::prelude::*;
 use rand::Rng;
 
-use super::components::*;
+use super::components::{
+    CameraBasePosition, Effect, EffectType, Particle, ParticleBundle, ScreenShake,
+};
+use crate::audio::{PlaySoundEvent, SoundEffect};
 use crate::bonuses::systems::BonusCollectedEvent;
 use crate::creatures::systems::CreatureDeathEvent;
 use crate::player::components::Player;
 use crate::player::systems::PlayerLevelUpEvent;
+use crate::weapons::components::Explosive;
 use crate::weapons::systems::{FireWeaponEvent, ProjectileHitEvent};
 
 /// Event to spawn an effect
@@ -128,9 +132,9 @@ pub fn handle_effect_spawns(mut commands: Commands, mut events: EventReader<Spaw
 /// Updates particle positions and lifetimes
 pub fn update_particles(
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut Particle, &mut Sprite)>,
+    mut query: Query<(&mut Transform, &mut Particle, &mut Sprite, &Effect)>,
 ) {
-    for (mut transform, mut particle, mut sprite) in query.iter_mut() {
+    for (mut transform, mut particle, mut sprite, effect) in query.iter_mut() {
         // Apply velocity
         transform.translation.x += particle.velocity.x * time.delta_seconds();
         transform.translation.y += particle.velocity.y * time.delta_seconds();
@@ -141,10 +145,32 @@ pub fn update_particles(
         // Update lifetime
         particle.lifetime -= time.delta_seconds();
 
-        // Apply fade out
-        if particle.fade_out {
-            let alpha = particle.lifetime / particle.max_lifetime;
-            sprite.color = sprite.color.with_alpha(alpha.max(0.0));
+        // Apply type-specific color changes based on effect_type
+        let progress = particle.progress();
+        match effect.effect_type {
+            EffectType::Explosion => {
+                // Explosions shift from yellow to red as they fade
+                let r = 1.0;
+                let g = 0.6 * (1.0 - progress);
+                let b = 0.1 * (1.0 - progress);
+                sprite.color = Color::srgba(r, g, b, 1.0 - progress);
+            }
+            EffectType::BloodSplatter | EffectType::Death => {
+                // Blood darkens as it ages
+                let darkness = 0.6 - 0.3 * progress;
+                if particle.fade_out {
+                    sprite.color = Color::srgba(darkness, 0.0, 0.0, 1.0 - progress);
+                } else {
+                    sprite.color = Color::srgb(darkness, 0.0, 0.0);
+                }
+            }
+            _ => {
+                // Apply fade out using progress() for smoother interpolation
+                if particle.fade_out {
+                    let alpha = 1.0 - progress;
+                    sprite.color = sprite.color.with_alpha(alpha.max(0.0));
+                }
+            }
         }
 
         // Apply scale change
@@ -155,25 +181,51 @@ pub fn update_particles(
     }
 }
 
-/// Updates screen shake effect
+/// Updates camera to follow the player
+pub fn update_camera_follow(
+    player_query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
+    mut base_pos: ResMut<CameraBasePosition>,
+) {
+    // Camera follows the average player position
+    let mut total_pos = Vec2::ZERO;
+    let mut count = 0;
+
+    for transform in player_query.iter() {
+        total_pos += transform.translation.truncate();
+        count += 1;
+    }
+
+    if count > 0 {
+        base_pos.position = total_pos / count as f32;
+    }
+}
+
+/// Updates screen shake effect and applies to camera
 pub fn update_screen_shake(
     time: Res<Time>,
-    mut shake: Option<ResMut<ScreenShake>>,
+    mut shake: ResMut<ScreenShake>,
+    base_pos: Res<CameraBasePosition>,
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
 ) {
-    let Some(ref mut shake) = shake else {
-        return;
-    };
-
     shake.update(time.delta_seconds());
 
     let offset = shake.get_offset();
 
     for mut transform in camera_query.iter_mut() {
-        // Reset to center plus shake offset
-        // In a real implementation, we'd store the base position
-        transform.translation.x = offset.x;
-        transform.translation.y = offset.y;
+        // Apply base position plus shake offset
+        transform.translation.x = base_pos.position.x + offset.x;
+        transform.translation.y = base_pos.position.y + offset.y;
+    }
+}
+
+/// Triggers screen shake when projectiles hit creatures
+pub fn trigger_screen_shake_on_hit(
+    mut hit_events: EventReader<ProjectileHitEvent>,
+    mut shake: ResMut<ScreenShake>,
+) {
+    for _event in hit_events.read() {
+        // Small shake on each hit
+        shake.add(1.5, 0.1);
     }
 }
 
@@ -197,13 +249,21 @@ pub fn cleanup_all_effects(mut commands: Commands, query: Query<Entity, With<Eff
 pub fn spawn_blood_on_death(
     mut death_events: EventReader<CreatureDeathEvent>,
     mut effect_events: EventWriter<SpawnEffectEvent>,
+    mut shake: ResMut<ScreenShake>,
 ) {
     for event in death_events.read() {
+        // Use entity for logging/debugging purposes
+        let _dead_entity = event.entity;
+
+        // Bosses get bigger effects
+        let is_boss = event.creature_type.is_boss();
+        let blood_count = if is_boss { 20 } else { 8 };
+
         // Spawn blood splatter
         effect_events.send(SpawnEffectEvent {
             effect_type: EffectType::BloodSplatter,
             position: event.position,
-            count: 8,
+            count: blood_count,
         });
 
         // Also spawn death effect for larger impact
@@ -212,22 +272,46 @@ pub fn spawn_blood_on_death(
             position: event.position,
             count: 1,
         });
+
+        // Bosses cause screen shake on death
+        if is_boss {
+            shake.add(8.0, 0.5);
+            // Spawn explosion effect for boss deaths
+            effect_events.send(SpawnEffectEvent {
+                effect_type: EffectType::Explosion,
+                position: event.position,
+                count: 30,
+            });
+        }
     }
 }
 
 /// Spawns level up effect at player position
+/// Uses new_level to scale effect intensity at milestone levels
 pub fn spawn_levelup_effect(
     mut levelup_events: EventReader<PlayerLevelUpEvent>,
     mut effect_events: EventWriter<SpawnEffectEvent>,
+    mut shake: ResMut<ScreenShake>,
     player_query: Query<&Transform, With<Player>>,
 ) {
     for event in levelup_events.read() {
         if let Ok(transform) = player_query.get(event.player_entity) {
-            effect_events.send(SpawnEffectEvent {
-                effect_type: EffectType::LevelUp,
-                position: transform.translation,
-                count: 1,
-            });
+            // Bigger effect at milestone levels (5, 10, 15, etc.)
+            let is_milestone = event.new_level % 5 == 0;
+            let particle_count = if is_milestone { 3 } else { 1 };
+
+            for _ in 0..particle_count {
+                effect_events.send(SpawnEffectEvent {
+                    effect_type: EffectType::LevelUp,
+                    position: transform.translation,
+                    count: 1,
+                });
+            }
+
+            // Screen shake at milestone levels
+            if is_milestone {
+                shake.add(3.0, 0.3);
+            }
         }
     }
 }
@@ -275,6 +359,33 @@ pub fn spawn_hit_effect(
             count: 3,
         });
     }
+}
+
+/// Plays explosion sound and effects for explosive projectiles
+pub fn spawn_explosion_effects(
+    query: Query<(&Transform, &Explosive)>,
+    despawned: Query<Entity, Added<crate::weapons::components::ProjectileDespawn>>,
+    explosive_query: Query<(&Transform, &Explosive)>,
+    mut effect_events: EventWriter<SpawnEffectEvent>,
+    mut sound_events: EventWriter<PlaySoundEvent>,
+) {
+    // When an explosive projectile is despawned, spawn explosion effects
+    for entity in despawned.iter() {
+        if let Ok((transform, _explosive)) = explosive_query.get(entity) {
+            effect_events.send(SpawnEffectEvent {
+                effect_type: EffectType::Explosion,
+                position: transform.translation,
+                count: 20,
+            });
+            sound_events.send(PlaySoundEvent {
+                sound: SoundEffect::Explosion,
+                position: Some(transform.translation.truncate()),
+            });
+        }
+    }
+
+    // Suppress unused warning for query
+    let _ = query;
 }
 
 #[cfg(test)]

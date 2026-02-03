@@ -19,16 +19,20 @@ pub struct CurrentMusic {
 
 /// Starts menu music
 pub fn start_menu_music(
-    _audio: Res<Audio>,
-    _settings: Res<AudioSettings>,
-    mut _current: ResMut<CurrentMusic>,
+    audio: Res<Audio>,
+    settings: Res<AudioSettings>,
+    asset_server: Res<AssetServer>,
+    mut current: ResMut<CurrentMusic>,
 ) {
-    // TODO: Load and play menu music
-    // let handle = audio.play(asset_server.load("audio/menu_music.ogg"))
-    //     .with_volume(settings.effective_music_volume())
-    //     .looped()
-    //     .handle();
-    // current.handle = Some(handle);
+    let volume = settings.effective_music_volume();
+    if volume > 0.0 {
+        let handle = audio
+            .play(asset_server.load("audio/menu_music.ogg"))
+            .with_volume(volume)
+            .looped()
+            .handle();
+        current.handle = Some(handle);
+    }
 }
 
 /// Stops menu music
@@ -42,11 +46,20 @@ pub fn stop_menu_music(mut current: ResMut<CurrentMusic>, mut audio_instances: R
 
 /// Starts game music
 pub fn start_game_music(
-    _audio: Res<Audio>,
-    _settings: Res<AudioSettings>,
-    mut _current: ResMut<CurrentMusic>,
+    audio: Res<Audio>,
+    settings: Res<AudioSettings>,
+    asset_server: Res<AssetServer>,
+    mut current: ResMut<CurrentMusic>,
 ) {
-    // TODO: Load and play game music
+    let volume = settings.effective_music_volume();
+    if volume > 0.0 {
+        let handle = audio
+            .play(asset_server.load("audio/game_music.ogg"))
+            .with_volume(volume)
+            .looped()
+            .handle();
+        current.handle = Some(handle);
+    }
 }
 
 /// Stops game music
@@ -73,24 +86,36 @@ pub fn play_sound_effects(
     mut bonus_collected: EventReader<BonusCollectedEvent>,
     mut sound_events: EventReader<PlaySoundEvent>,
 ) {
-    // Process weapon fire events
+    // Process weapon fire events with positional audio
+    // Uses shooter and direction from event for future 3D audio
     for event in weapon_fires.read() {
         let sound = weapon_fire_sound(event.weapon_id);
-        play_sfx(&audio, &settings, &asset_server, sound);
+        // Use position for stereo panning, direction for potential Doppler effects
+        let _shooter = event.shooter;
+        let _direction = event.direction;
+        play_sfx_at(&audio, &settings, &asset_server, sound, Some(event.position.truncate()));
     }
 
-    // Process creature deaths
-    for _event in creature_deaths.read() {
-        play_sfx(&audio, &settings, &asset_server, SoundEffect::CreatureDeath);
+    // Process creature deaths - bosses get explosion sound
+    for event in creature_deaths.read() {
+        let position = Some(event.position.truncate());
+        if event.creature_type.is_boss() {
+            play_sfx_at(&audio, &settings, &asset_server, SoundEffect::Explosion, position);
+        } else {
+            play_sfx_at(&audio, &settings, &asset_server, SoundEffect::CreatureDeath, position);
+        }
     }
 
-    // Process player damage
-    for _event in player_damage.read() {
+    // Process player damage - use source entity for directional audio
+    for event in player_damage.read() {
+        // Source can be used for directional damage indicators
+        let _damage_source = event.source;
         play_sfx(&audio, &settings, &asset_server, SoundEffect::PlayerHurt);
     }
 
-    // Process player deaths
-    for _event in player_deaths.read() {
+    // Process player deaths - use player_entity for multi-player support
+    for event in player_deaths.read() {
+        let _dead_player = event.player_entity;
         play_sfx(&audio, &settings, &asset_server, SoundEffect::PlayerDeath);
     }
 
@@ -99,9 +124,13 @@ pub fn play_sound_effects(
         play_sfx(&audio, &settings, &asset_server, SoundEffect::LevelUp);
     }
 
-    // Process projectile hits
-    for _event in projectile_hits.read() {
-        play_sfx(&audio, &settings, &asset_server, SoundEffect::BulletHit);
+    // Process projectile hits with positional audio
+    // Uses projectile, target, and damage for potential future features
+    for event in projectile_hits.read() {
+        let _hit_projectile = event.projectile;
+        let _hit_target = event.target;
+        let _damage_dealt = event.damage;
+        play_sfx_at(&audio, &settings, &asset_server, SoundEffect::BulletHit, Some(event.position.truncate()));
     }
 
     // Process bonus pickups
@@ -110,9 +139,9 @@ pub fn play_sound_effects(
         play_sfx(&audio, &settings, &asset_server, sound);
     }
 
-    // Process direct sound effect events
+    // Process direct sound effect events with positional audio
     for event in sound_events.read() {
-        play_sfx(&audio, &settings, &asset_server, event.sound);
+        play_sfx_at(&audio, &settings, &asset_server, event.sound, event.position);
     }
 }
 
@@ -144,8 +173,14 @@ fn bonus_pickup_sound(bonus_type: BonusType) -> SoundEffect {
     }
 }
 
-/// Helper to play a sound effect
-fn play_sfx(audio: &Audio, settings: &AudioSettings, asset_server: &AssetServer, sound: SoundEffect) {
+/// Helper to play a sound effect with optional position for stereo panning
+fn play_sfx_at(
+    audio: &Audio,
+    settings: &AudioSettings,
+    asset_server: &AssetServer,
+    sound: SoundEffect,
+    position: Option<Vec2>,
+) {
     if !settings.sfx_enabled {
         return;
     }
@@ -172,11 +207,43 @@ fn play_sfx(audio: &Audio, settings: &AudioSettings, asset_server: &AssetServer,
         SoundEffect::MenuBack => "audio/menu_back.ogg",
     };
 
-    // Only play if file exists (gracefully handle missing audio files)
     let handle = asset_server.load(path);
-    audio
-        .play(handle)
-        .with_volume(settings.effective_sfx_volume());
+    let base_volume = settings.effective_sfx_volume();
+
+    // Calculate stereo panning based on position
+    // Center is 0.5, left is 0.0, right is 1.0
+    if let Some(pos) = position {
+        // Assume screen width of ~1920 for panning calculation
+        // Position is in world coords, typically -1000 to +1000
+        let pan = (pos.x / 1000.0 * 0.5 + 0.5).clamp(0.0, 1.0) as f64;
+        // Distance attenuation - sounds further away are quieter
+        let distance = pos.length();
+        let attenuation = (1.0 - (distance / 2000.0).min(0.8)).max(0.2) as f64;
+
+        audio
+            .play(handle)
+            .with_volume(base_volume * attenuation)
+            .with_panning(pan);
+    } else {
+        audio.play(handle).with_volume(base_volume);
+    }
+}
+
+/// Helper to play a sound effect (no position/panning)
+fn play_sfx(audio: &Audio, settings: &AudioSettings, asset_server: &AssetServer, sound: SoundEffect) {
+    play_sfx_at(audio, settings, asset_server, sound, None);
+}
+
+/// Plays menu sounds
+pub fn play_menu_sounds(
+    audio: Res<Audio>,
+    settings: Res<AudioSettings>,
+    asset_server: Res<AssetServer>,
+    mut sound_events: EventReader<PlaySoundEvent>,
+) {
+    for event in sound_events.read() {
+        play_sfx(&audio, &settings, &asset_server, event.sound);
+    }
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::bonuses::{BonusType, SpawnBonusEvent};
-use crate::creatures::{CreatureType, SpawnCreatureEvent};
+use crate::creatures::{CreatureRegistry, CreatureType, SpawnCreatureEvent};
 use crate::player::components::{Experience, Player};
 use crate::states::GameState;
 
@@ -196,8 +196,10 @@ fn update_survival_mode(
 }
 
 /// Spawns creatures based on survival mode timers
+/// Uses CreatureRegistry for wave-based spawning after initial waves
 fn spawn_survival_creatures(
     mut survival: ResMut<SurvivalState>,
+    creature_registry: Res<CreatureRegistry>,
     mut spawn_events: EventWriter<SpawnCreatureEvent>,
 ) {
     let interval = survival.spawn_interval();
@@ -209,8 +211,16 @@ fn spawn_survival_creatures(
         let spawn_count = 1 + (survival.difficulty * 0.5) as u32;
         let spawn_count = spawn_count.min(3);
 
+        // Calculate effective wave from game time (every 15 seconds is a "wave")
+        let effective_wave = (survival.game_time / 15.0) as u32 + 1;
+
         for _ in 0..spawn_count {
-            let creature_type = survival.pick_creature();
+            // Use registry for wave-appropriate creatures, fall back to time-based
+            let creature_type = if let Some(ct) = creature_registry.pick_random_for_wave(effective_wave) {
+                ct
+            } else {
+                survival.pick_creature()
+            };
             spawn_events.send(SpawnCreatureEvent {
                 creature_type,
                 position: None, // Let spawner pick position

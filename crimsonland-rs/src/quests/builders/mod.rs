@@ -7,6 +7,7 @@
 // For now, the basic wave spawning system handles most cases
 
 /// Trait for custom quest spawn logic
+#[allow(dead_code)]
 pub trait QuestBuilder {
     /// Called each frame to handle custom spawning
     fn update(&mut self, delta: f32) -> Vec<SpawnCommand>;
@@ -16,6 +17,7 @@ pub trait QuestBuilder {
 }
 
 /// Command to spawn a creature
+#[allow(dead_code)]
 pub struct SpawnCommand {
     pub creature_type: crate::creatures::components::CreatureType,
     pub position: Option<bevy::prelude::Vec3>,

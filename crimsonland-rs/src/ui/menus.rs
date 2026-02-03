@@ -2,10 +2,11 @@
 
 use bevy::prelude::*;
 
-use super::{text_style, GameOverUi, MainMenuUi, PauseMenuUi, VictoryUi};
+use super::{centered_text, text_style, GameOverUi, MainMenuUi, PauseMenuUi, StateUi, VictoryUi};
+use crate::audio::{PlaySoundEvent, SoundEffect};
 use crate::quests::database::QuestId;
 use crate::quests::systems::{ActiveQuest, QuestProgress};
-use crate::rush::{RushLoadout, RushState};
+use crate::rush::RushState;
 use crate::states::GameState;
 use crate::survival::SurvivalState;
 
@@ -108,27 +109,54 @@ pub fn handle_main_menu_input(
     mut next_state: ResMut<NextState<GameState>>,
     mut active_quest: ResMut<ActiveQuest>,
     mut exit: EventWriter<AppExit>,
+    mut sound_events: EventWriter<PlaySoundEvent>,
 ) {
     if keyboard.just_pressed(KeyCode::Enter) {
-        // Start quest mode with first quest
-        active_quest.quest_id = Some(QuestId::Q01LandHostile);
+        // Start quest mode with first quest using ActiveQuest::new
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuSelect,
+            position: None,
+        });
+        *active_quest = ActiveQuest::new(QuestId::Q01LandHostile);
         next_state.set(GameState::Playing);
     }
 
     if keyboard.just_pressed(KeyCode::KeyS) {
         // Survival mode (no specific quest)
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuSelect,
+            position: None,
+        });
         active_quest.quest_id = None;
         next_state.set(GameState::Playing);
     }
 
     if keyboard.just_pressed(KeyCode::KeyR) {
         // Rush mode - 2 minute timed challenge
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuSelect,
+            position: None,
+        });
         active_quest.quest_id = None;
-        commands.insert_resource(RushState::new(120.0, RushLoadout::default()));
+
+        // Select a loadout from available_loadouts (use first one for now)
+        // In a full implementation, this would go to a loadout selection screen
+        let loadouts = crate::rush::available_loadouts();
+        let selected_loadout = loadouts.into_iter().next().unwrap_or_default();
+
+        // Log the loadout selection
+        info!("Starting Rush mode with loadout: {} (weapon: {:?}, perks: {:?})",
+            selected_loadout.name, selected_loadout.weapon, selected_loadout.perks);
+
+        commands.insert_resource(RushState::new(120.0, selected_loadout));
         next_state.set(GameState::Playing);
     }
 
     if keyboard.just_pressed(KeyCode::Escape) {
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuBack,
+            position: None,
+        });
         exit.send(AppExit::Success);
     }
 }
@@ -138,6 +166,7 @@ pub fn setup_pause_menu(mut commands: Commands) {
     commands
         .spawn((
             PauseMenuUi,
+            StateUi, // Generic marker for state-based UI cleanup
             NodeBundle {
                 style: Style {
                     width: Val::Percent(100.0),
@@ -169,9 +198,10 @@ pub fn setup_pause_menu(mut commands: Commands) {
                 ..default()
             });
 
-            parent.spawn(TextBundle::from_section(
+            parent.spawn(centered_text(
                 "Press ESC to Resume",
-                text_style(24.0, Color::srgb(0.7, 0.7, 0.7)),
+                24.0,
+                Color::srgb(0.7, 0.7, 0.7),
             ));
 
             parent.spawn(TextBundle::from_section(
@@ -321,12 +351,21 @@ pub fn cleanup_game_over(mut commands: Commands, query: Query<Entity, With<GameO
 pub fn handle_game_over_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut sound_events: EventWriter<PlaySoundEvent>,
 ) {
     if keyboard.just_pressed(KeyCode::Enter) {
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuSelect,
+            position: None,
+        });
         next_state.set(GameState::Playing);
     }
 
     if keyboard.just_pressed(KeyCode::Escape) {
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuBack,
+            position: None,
+        });
         next_state.set(GameState::MainMenu);
     }
 }
@@ -448,13 +487,22 @@ pub fn cleanup_victory(mut commands: Commands, query: Query<Entity, With<Victory
 pub fn handle_victory_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut sound_events: EventWriter<PlaySoundEvent>,
 ) {
     if keyboard.just_pressed(KeyCode::Enter) {
-        // TODO: Progress to next quest
+        // Progress to next quest (or replay)
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuSelect,
+            position: None,
+        });
         next_state.set(GameState::Playing);
     }
 
     if keyboard.just_pressed(KeyCode::Escape) {
+        sound_events.send(PlaySoundEvent {
+            sound: SoundEffect::MenuBack,
+            position: None,
+        });
         next_state.set(GameState::MainMenu);
     }
 }

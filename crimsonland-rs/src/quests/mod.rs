@@ -36,6 +36,8 @@ impl Plugin for QuestsPlugin {
                     track_quest_kills,
                     check_wave_completion,
                     check_quest_completion,
+                    handle_wave_completion,
+                    handle_quest_completion,
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing))
