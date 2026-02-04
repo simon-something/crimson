@@ -51,6 +51,12 @@
             outline: none;
             width: 100%;
             height: 100%;
+            /* Ensure canvas can receive focus */
+            touch-action: none;
+        }
+
+        canvas:focus {
+            outline: none;
         }
 
         #bevy-canvas {
@@ -100,7 +106,7 @@
         <p>Loading Crimsonland...</p>
     </div>
 
-    <canvas id="bevy-canvas"></canvas>
+    <canvas id="bevy-canvas" tabindex="0"></canvas>
 
     <button id="fullscreen-btn">Fullscreen</button>
 
@@ -117,10 +123,14 @@
     <script type="module">
         import init from './crimsonland.js';
 
+        const canvas = document.getElementById('bevy-canvas');
+
         async function run() {
             try {
                 await init();
                 document.getElementById('loading').style.display = 'none';
+                // Focus canvas to receive keyboard input
+                canvas.focus();
             } catch (error) {
                 document.getElementById('loading').innerHTML = `
                     <p style="color: #ff6b6b;">Failed to load game</p>
@@ -129,6 +139,9 @@
                 console.error('Failed to start game:', error);
             }
         }
+
+        // Click anywhere to focus canvas for keyboard input
+        document.addEventListener('click', () => canvas.focus());
 
         // Fullscreen toggle
         document.getElementById('fullscreen-btn').addEventListener('click', () => {
