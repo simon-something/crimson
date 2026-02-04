@@ -43,8 +43,9 @@ impl Default for AudioSettings {
             master_volume: 1.0,
             music_volume: 0.7,
             sfx_volume: 1.0,
-            music_enabled: true,
-            sfx_enabled: true,
+            // Disabled by default until audio files are added to assets/audio/
+            music_enabled: false,
+            sfx_enabled: false,
         }
     }
 }
@@ -114,16 +115,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn audio_settings_default_has_sound() {
+    fn audio_settings_default_disabled() {
+        // Audio disabled by default until audio files are added
         let settings = AudioSettings::default();
-        assert!(settings.music_enabled);
-        assert!(settings.sfx_enabled);
+        assert!(!settings.music_enabled);
+        assert!(!settings.sfx_enabled);
         assert!(settings.master_volume > 0.0);
     }
 
     #[test]
-    fn audio_settings_effective_volume_respects_mute() {
+    fn audio_settings_effective_volume_respects_enabled() {
         let mut settings = AudioSettings::default();
+        settings.music_enabled = true;
         assert!(settings.effective_music_volume() > 0.0);
 
         settings.music_enabled = false;
@@ -133,6 +136,7 @@ mod tests {
     #[test]
     fn audio_settings_effective_volume_respects_master() {
         let mut settings = AudioSettings::default();
+        settings.music_enabled = true;
         settings.master_volume = 0.5;
         settings.music_volume = 1.0;
 
