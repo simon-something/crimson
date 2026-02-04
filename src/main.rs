@@ -28,6 +28,12 @@ fn main() {
                 title: "Crimsonland".into(),
                 resolution: (1280.0, 720.0).into(),
                 resizable: true,
+                // WASM: Use the canvas element with id "bevy-canvas"
+                canvas: Some("#bevy-canvas".into()),
+                // Prevent default browser behavior (scrolling, right-click menu)
+                prevent_default_event_handling: true,
+                // Fit canvas to parent container
+                fit_canvas_to_parent: true,
                 ..default()
             }),
             ..default()

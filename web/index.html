@@ -126,18 +126,13 @@
         const canvas = document.getElementById('bevy-canvas');
 
         async function run() {
-            try {
-                await init();
-                document.getElementById('loading').style.display = 'none';
-                // Focus canvas to receive keyboard input
-                canvas.focus();
-            } catch (error) {
-                document.getElementById('loading').innerHTML = `
-                    <p style="color: #ff6b6b;">Failed to load game</p>
-                    <p style="font-size: 14px; margin-top: 10px;">${error}</p>
-                `;
-                console.error('Failed to start game:', error);
-            }
+            document.getElementById('loading').style.display = 'none';
+            // Focus canvas to receive keyboard input
+            canvas.focus();
+
+            // Don't use try/catch - winit uses exceptions for control flow in WASM
+            // which would incorrectly trigger the error handler
+            await init();
         }
 
         // Click anywhere to focus canvas for keyboard input
